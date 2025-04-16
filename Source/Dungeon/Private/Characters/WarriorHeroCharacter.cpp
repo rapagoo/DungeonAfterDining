@@ -5,6 +5,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "DataAssets/Input/DataAsset_InputConfig.h"
@@ -36,6 +37,10 @@ AWarriorHeroCharacter::AWarriorHeroCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
+	// Scene Capture Component 2D 생성 및 초기 설정
+	SceneCaptureComponent2D = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2D"));
+	SceneCaptureComponent2D->SetupAttachment(GetRootComponent());
+	
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 500.f, 0.f);
 	GetCharacterMovement()->MaxWalkSpeed = 400.f;
@@ -100,6 +105,19 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 void AWarriorHeroCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// Scene Capture Component 2D 설정 (블루프린트 "Show Only Actor Components" 구현)
+	if (SceneCaptureComponent2D)
+	{
+		// 기본 설정
+		SceneCaptureComponent2D->bCaptureEveryFrame = true;
+		
+		// Show Only Actor Components 설정 - 자신(Self)의 컴포넌트만 표시
+		SceneCaptureComponent2D->ShowOnlyActorComponents(this);
+		
+		// 추가 설정
+		SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_SceneColorHDR;
+	}
 }
 
 void AWarriorHeroCharacter::Input_Move(const FInputActionValue& InputActionValue)
