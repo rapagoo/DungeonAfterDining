@@ -12,7 +12,7 @@
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
 
-#include "DebugHelper.h"
+#include "WarriorDebugHelper.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 

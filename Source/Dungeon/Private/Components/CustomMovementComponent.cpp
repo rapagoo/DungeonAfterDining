@@ -9,7 +9,7 @@
 #include "Dungeon/ClimbingSystemCharacter.h"
 #include "MotionWarpingComponent.h"
 
-#include "Dungeon/DebugHelper.h"
+#include "WarriorDebugHelper.h"
 
 void UCustomMovementComponent::BeginPlay()
 {
