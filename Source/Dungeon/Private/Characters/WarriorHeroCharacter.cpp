@@ -16,11 +16,16 @@
 #include "Components/Combat/HeroCombatComponent.h"
 #include "Components/UI/HeroUIComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "Inventory/InventoryComponent.h"
+#include "EnhancedInputComponent.h"
 
 #include "WarriorDebugHelper.h"
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
+	// Disable Tick function for performance if not needed
+	PrimaryActorTick.bCanEverTick = false;
+
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
 
 	bUseControllerRotationPitch = false;
@@ -49,6 +54,9 @@ AWarriorHeroCharacter::AWarriorHeroCharacter()
 	HeroCombatComponent = CreateDefaultSubobject<UHeroCombatComponent>(TEXT("HeroCombatComponent"));
 
 	HeroUIComponent = CreateDefaultSubobject<UHeroUIComponent>(TEXT("HeroUIComponent"));
+
+	// Temporarily disabled Inventory Component creation
+	// InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 }
 
 UPawnCombatComponent* AWarriorHeroCharacter::GetPawnCombatComponent() const
@@ -81,6 +89,30 @@ void AWarriorHeroCharacter::PossessedBy(AController* NewController)
 
 void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	// Cast to Enhanced Input Component is crucial
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		// Temporarily disabled Inventory Component input binding
+		/*
+		// Bind inventory actions if the component is valid
+		if (InventoryComponent)
+		{
+			InventoryComponent->SetupInputBinding(EnhancedInputComponent);
+			UE_LOG(LogTemp, Log, TEXT("InventoryComponent input binding setup called for %s"), *GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
+		}
+		*/
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to cast PlayerInputComponent to UEnhancedInputComponent on %s"), *GetName());
+	}
+
 	checkf(InputConfigDataAsset, TEXT("Forgot to assign a valid data asset as input config"))
 
 	ULocalPlayer* LocalPlayer = GetController<APlayerController>()->GetLocalPlayer();

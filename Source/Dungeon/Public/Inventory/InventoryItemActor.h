@@ -44,4 +44,8 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	// Returns the item data stored in this actor
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	FSlotStruct GetItemData() const { return Item; }
+
 };
