@@ -9,6 +9,9 @@
 #include "Inventory/InvenItemStruct.h"
 #include "Inventory/InvenItemEnum.h" // Include the enum definition
 #include "UObject/Object.h" // Needed for UEnum::GetValueAsString
+#include "Styling/SlateBrush.h" // Needed for FSlateBrush
+#include "Styling/SlateColor.h" // Needed for FSlateColor
+#include "Math/Color.h" // Needed for FLinearColor
 
 void UItemInfoWidget::NativePreConstruct()
 {
@@ -79,7 +82,14 @@ void UItemInfoWidget::RefreshWidgetDisplay()
 
 				if (TypeTexture)
 				{
-					ItemTypeImage->SetBrushFromTexture(TypeTexture);
+					// Create a new brush and set properties explicitly
+					FSlateBrush NewBrush;
+					NewBrush.SetResourceObject(TypeTexture);
+					NewBrush.ImageSize = FVector2D(49.0f, 49.0f); // Set explicit size matching BP
+					NewBrush.DrawAs = ESlateBrushDrawType::Image;   // Ensure it draws as an image
+					NewBrush.TintColor = FSlateColor(FLinearColor::White); // Correct way to set white tint
+					ItemTypeImage->SetBrush(NewBrush);
+
 					ItemTypeImage->SetVisibility(ESlateVisibility::Visible);
 				}
 				else
