@@ -40,6 +40,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
 	TSoftObjectPtr<UDataTable> InventoryDataTable; 
 
+	// Updates the static mesh component based on the Item data
+	virtual void UpdateStaticMesh();
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -48,8 +51,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	FSlotStruct GetItemData() const { return Item; }
 
-	// Allows external objects to set the item data for this actor
+	// Allows external objects to set the item data for this actor and update visuals
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void SetItemData(const FSlotStruct& NewItem) { Item = NewItem; /* Potentially call RefreshWidgetDisplay or similar if this actor has UI */ }
+	void SetItemData(const FSlotStruct& NewItem);
 
 };

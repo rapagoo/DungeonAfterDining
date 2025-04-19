@@ -81,6 +81,7 @@ public:
 
 protected:
 	// Native overrides
+	virtual bool Initialize() override;
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;

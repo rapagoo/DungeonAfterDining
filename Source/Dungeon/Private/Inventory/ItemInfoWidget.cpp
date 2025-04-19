@@ -8,6 +8,7 @@
 #include "Inventory/SlotStruct.h"
 #include "Inventory/InvenItemStruct.h"
 #include "Inventory/InvenItemEnum.h" // Include the enum definition
+#include "UObject/Object.h" // Needed for UEnum::GetValueAsString
 
 void UItemInfoWidget::NativePreConstruct()
 {
@@ -52,12 +53,17 @@ void UItemInfoWidget::RefreshWidgetDisplay()
 				ItemDescriptionText->SetText(ItemData->Description);
 				PowerText->SetText(FText::AsNumber(ItemData->Power)); // Convert float to FText
 
+				// Add log for checking ItemType received from ItemData (FSlotStruct)
+				UE_LOG(LogTemp, Warning, TEXT("ItemInfoWidget: RefreshWidgetDisplay: ItemType is %s"), *UEnum::GetValueAsString(Item.ItemType));
+
 				// Set Item Type Image based on the Item's type
 				UTexture2D* TypeTexture = nullptr;
 				switch (Item.ItemType) // Use ItemType from the FSlotStruct Item
 				{
 					case EInventoryItemType::EIT_Eatables:
 						TypeTexture = EatablesItemTypeTexture.LoadSynchronous();
+						// Add log for checking texture loading result
+						UE_LOG(LogTemp, Warning, TEXT("ItemInfoWidget: RefreshWidgetDisplay: Loaded Eatables Texture: %s"), TypeTexture ? *TypeTexture->GetName() : TEXT("NULL"));
 						break;
 					// Add cases for Sword, Shield later if needed
 					// case EInventoryItemType::EIT_Sword:

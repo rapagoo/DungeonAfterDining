@@ -13,6 +13,7 @@ class UImage;
 class AWarriorHeroCharacter;
 class UInventoryComponent;
 class USlotWidget; // Forward declare SlotWidget
+class AInventoryItemActor; // Forward declare InventoryItemActor
 
 /**
  * Widget that appears when right-clicking an inventory item.
@@ -65,6 +66,11 @@ protected:
 	// Reference to the slot widget that created this menu
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Action Menu Data")
 	USlotWidget* OwningSlotWidget;
+
+protected:
+	// The class of the item actor to spawn when dropping
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Action Menu Config")
+	TSubclassOf<AInventoryItemActor> ItemActorClass;
 
 protected:
 	// Called when the widget is constructed (after properties are initialized)

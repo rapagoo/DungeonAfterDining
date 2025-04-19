@@ -13,7 +13,7 @@
 #include "Kismet/GameplayStatics.h" // For GetPlayerController
 #include "Kismet/KismetSystemLibrary.h" // For SphereTraceSingle
 #include "DrawDebugHelpers.h" // For DrawDebugSphere (optional)
-// #include "Inventory/AllItemStruct.h" // No longer needed
+// #include "Camera/CameraComponent.h" // No longer needed
 
 // Include necessary headers for casting
 #include "Characters/WarriorHeroCharacter.h" 
@@ -30,6 +30,7 @@ UInventoryComponent::UInventoryComponent()
 
 	// Initialize inventory slots (e.g., with a fixed size)
 	// InventorySlots.SetNum(20); // Example: Initialize with 20 empty slots
+	InventorySlots.SetNum(20); // Initialize with 20 empty slots by default
 }
 
 
@@ -290,35 +291,34 @@ void UInventoryComponent::UpdateInventoryUI()
 	// Check if the widget instance is valid
 	if (InventoryWidgetInstance)
 	{
-		UE_LOG(LogTemp, Log, TEXT("UpdateInventoryUI called. Attempting to update widget."));
+		UE_LOG(LogTemp, Log, TEXT("[UpdateInventoryUI] Function called. Attempting to update widget."));
 
-		// --- IMPORTANT --- 
-		// You MUST cast InventoryWidgetInstance to your specific widget class (e.g., UWBP_Inventory)
-		// and call the correct function that expects the TArray<FSlotStruct>.
-
-		// Example assuming your widget class is UWBP_Inventory and has a function called UpdateItemsInInventoryUI
-		// UWBP_Inventory* InventoryWidget = Cast<UWBP_Inventory>(InventoryWidgetInstance);
-		// if (InventoryWidget)
-		// {
-		// 	InventoryWidget->UpdateItemsInInventoryUI(InventorySlots); // Pass the TArray
-		// 	UE_LOG(LogTemp, Log, TEXT("Called UpdateItemsInInventoryUI on widget."));
-		// }
-		// else
-		// {
-		// 	UE_LOG(LogTemp, Error, TEXT("Failed to cast InventoryWidgetInstance to expected widget class."));
-		// }
+		// Cast InventoryWidgetInstance to our specific C++ widget class
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
+		if (InventoryWidget)
+		{
+			// Call the function on the C++ widget to update its slots
+			InventoryWidget->UpdateItemsInInventoryUI(InventorySlots); // Pass the TArray
+			UE_LOG(LogTemp, Log, TEXT("[UpdateInventoryUI] Called UpdateItemsInInventoryUI on C++ InventoryWidget."));
+		}
+		else
+		{
+			// Log an error if casting failed. InventoryWidgetClass might be wrong or not derived from UInventoryWidget.
+			UE_LOG(LogTemp, Error, TEXT("[UpdateInventoryUI] Failed to cast InventoryWidgetInstance to UInventoryWidget. Ensure InventoryWidgetClass in BP defaults derives from UInventoryWidget."));
+		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UpdateInventoryUI called, but InventoryWidgetInstance is null."));
+		UE_LOG(LogTemp, Warning, TEXT("[UpdateInventoryUI] Function called, but InventoryWidgetInstance is null."));
 	}
 }
 
 bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor*& OutItemActor)
 {
-	// UE_LOG(LogTemp, VeryVerbose, TEXT("[TraceForItem] Function Called.")); // Reduce log spam if needed
-	OutItemActor = nullptr; // Initialize output actor
+	// UE_LOG(LogTemp, VeryVerbose, TEXT("[TraceForItem] Function Called."));
+	OutItemActor = nullptr;
 
+	// Get the owner actor (Player Character)
 	AActor* Owner = GetOwner();
 	if (!Owner) 
 	{
@@ -326,8 +326,8 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 		return false;
 	}
 
-	// Calculate Trace Start and End points based on the Blueprint logic
-	const FVector StartLocation = Owner->GetActorLocation() + FVector(0.0f, 0.0f, 65.0f);
+	// Calculate Trace Start and End points based on the original Blueprint logic
+	const FVector StartLocation = Owner->GetActorLocation() + FVector(0.0f, 0.0f, -65.0f); // Subtract Z value
 	const FVector EndLocation = StartLocation + Owner->GetActorForwardVector() * 100.0f;
 	const float SphereRadius = 30.0f;
 
@@ -345,12 +345,13 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 		TraceChannel, 
 		false, // bTraceComplex
 		ActorsToIgnore,
-		EDrawDebugTrace::None, // Draw Debug Type (set to ForDuration for testing)
+		EDrawDebugTrace::None, 
 		HitResult,
 		true  // bIgnoreSelf
 	);
 
 	// --- Enable Debug Drawing --- 
+/* // Debug Drawing Disabled
 #if ENABLE_DRAW_DEBUG
 	DrawDebugSphere(GetWorld(), StartLocation, SphereRadius, 12, FColor::Yellow, false, 2.0f);
 	DrawDebugSphere(GetWorld(), EndLocation, SphereRadius, 12, FColor::Orange, false, 2.0f);
@@ -360,6 +361,7 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 		DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, SphereRadius, 12, FColor::Green, false, 2.0f);
 	}
 #endif
+*/
 	// --- End Debug Drawing --- 
 
 	if (bHit && HitResult.GetActor())

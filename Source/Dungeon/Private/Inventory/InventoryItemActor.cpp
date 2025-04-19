@@ -6,6 +6,7 @@
 #include "Engine/StaticMesh.h"
 #include "Inventory/InvenItemStruct.h" // For FInventoryItemStruct (Data Table Row Type)
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
+#include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
@@ -16,23 +17,32 @@ AInventoryItemActor::AInventoryItemActor()
 	// Create the Static Mesh Component and set as root
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
 	RootComponent = StaticMeshComponent;
+
+	// Enable physics simulation for the mesh
+	StaticMeshComponent->SetSimulatePhysics(true);
+	StaticMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Use standard PhysicsActor profile
+	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Enable physics and query collisions
 }
 
 // Called when the game starts or when spawned
 void AInventoryItemActor::BeginPlay()
 {
 	Super::BeginPlay();
-	// Logic moved to OnConstruction
+	// Initial mesh update is handled by OnConstruction or SetItemData
 }
 
 // Called when an instance of this class is placed or updated in the editor
 void AInventoryItemActor::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
+    UpdateStaticMesh(); // Call the new update function
+}
 
-    if (!StaticMeshComponent) 
+void AInventoryItemActor::UpdateStaticMesh()
+{
+	if (!StaticMeshComponent) 
     {
-        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: OnConstruction: StaticMeshComponent is missing!"), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateStaticMesh: StaticMeshComponent is missing!"), *GetName());
         return;
     }
 
@@ -45,13 +55,17 @@ void AInventoryItemActor::OnConstruction(const FTransform& Transform)
 
     if (ItemTable && ItemRowName.IsValid() && !ItemRowName.IsNone())
     {
-        const FString ContextString = GetName() + TEXT(" Construction");
+        const FString ContextString = GetName() + TEXT(" UpdateStaticMesh"); // Updated context
         FInventoryItemStruct* ItemData = ItemTable->FindRow<FInventoryItemStruct>(ItemRowName, ContextString);
 
         if (ItemData)
         {
             // Row found, try to load the mesh assigned in the data table row
             MeshToSet = ItemData->Mesh.LoadSynchronous();
+
+            // *** 중요: 데이터 테이블에서 ItemType을 읽어와 멤버 변수에 저장 ***
+            Item.ItemType = ItemData->ItemType; // Ensure ItemType is updated from DT
+
             if (!MeshToSet)
             {
                 // Log if mesh loading failed, but row was found
@@ -60,7 +74,7 @@ void AInventoryItemActor::OnConstruction(const FTransform& Transform)
             }
             else
             {
-                 UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Row '%s' found. Attempting to set mesh '%s'."), 
+                 UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Row '%s' found. Setting mesh '%s'."), // Simplified log
                     *GetName(), *ItemRowName.ToString(), *MeshToSet->GetName());
             }
         }
@@ -73,8 +87,8 @@ void AInventoryItemActor::OnConstruction(const FTransform& Transform)
     }
     else if (!ItemRowName.IsValid() || ItemRowName.IsNone())
     {
-         // Log if no valid Row Name is selected in the ItemID handle
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: No valid ItemID.RowName selected in Details panel."), *GetName()); 
+         // Log if no valid Row Name is selected (e.g., after SetItemData with empty struct)
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: ItemID.RowName is not valid or None."), *GetName()); 
     }
     else // !ItemTable
     {
@@ -98,4 +112,11 @@ void AInventoryItemActor::OnConstruction(const FTransform& Transform)
 void AInventoryItemActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+// Set item data and update the mesh
+void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
+{
+	Item = NewItem;
+	UpdateStaticMesh(); // Call the update function after setting data
 }

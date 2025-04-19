@@ -30,7 +30,8 @@ UInventoryWidget::UInventoryWidget(const FObjectInitializer& ObjectInitializer)
 	SlotWidgetClass = nullptr; 
 
 	// Allow this widget to receive focus when UI input mode is set
-	bIsFocusable = true;
+	// bIsFocusable = true; // Deprecated direct access
+	SetIsFocusable(true); // Use the setter function instead
 }
 
 void UInventoryWidget::SetOwnerReferences(AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory)
@@ -55,15 +56,49 @@ void UInventoryWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	// Bind button clicks and hover events
+	/* // Moved to Initialize() to prevent multiple bindings
 	if (EatableButton)
 	{
 		EatableButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnEatableButtonClicked);
 		EatableButton->OnHovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonHovered);
 		EatableButton->OnUnhovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonUnhovered);
 	}
+	*/
 
 	// Optional: Ensure the first tab is selected on construct if needed
 	// SelectTab(2); // Or maybe SelectTab(2) if Eatables is default?
+}
+
+bool UInventoryWidget::Initialize()
+{
+	const bool bSuccess = Super::Initialize();
+	if (!bSuccess) return false;
+
+	// Bind button clicks and hover events here, ensuring they are bound only once
+	if (EatableButton)
+	{
+		if (!EatableButton->OnClicked.IsBound()) // Optional check to be extra safe
+		{
+			EatableButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnEatableButtonClicked);
+		}
+		if (!EatableButton->OnHovered.IsBound())
+		{
+			 EatableButton->OnHovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonHovered);
+		}
+	   if (!EatableButton->OnUnhovered.IsBound())
+		{
+			EatableButton->OnUnhovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonUnhovered);
+		}
+	}
+	else
+	{
+		// Log if button not bound in Initialize, potential issue with widget setup
+		UE_LOG(LogTemp, Warning, TEXT("UInventoryWidget::Initialize - EatableButton is not valid!"));
+	}
+
+	// Add bindings for other tab buttons if they exist...
+
+	return true;
 }
 
 FReply UInventoryWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)

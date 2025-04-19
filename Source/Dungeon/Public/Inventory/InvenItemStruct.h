@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h" // Include for FTableRowBase
+#include "Inventory/InvenItemEnum.h" // Include Enum definition
 #include "InvenItemStruct.generated.h"
 
 // Forward declarations for asset types
@@ -24,6 +25,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Properties")
 	FText Description;
 
+	// Tooltip: ItemType
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Properties")
+	EInventoryItemType ItemType;
+
 	// Tooltip: Thumbnail
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Properties")
 	TSoftObjectPtr<UTexture2D> Thumbnail; // Use Soft Ptr for assets
@@ -42,7 +47,8 @@ public:
 
 	// Default constructor
 	FInventoryItemStruct()
-		: StackSize(1)
+		: ItemType(EInventoryItemType::EIT_Eatables) // Initialize with a valid existing enum value
+		, StackSize(1)
 		, Power(0.0f)
 	{
 		// Initialize default values if needed

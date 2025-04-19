@@ -103,7 +103,16 @@ void UActionMenuWidget::OnDropButtonClicked()
 	SpawnParams.Instigator = OwnerCharacter; // Instigator might be controller
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-	AInventoryItemActor* DroppedActor = GetWorld()->SpawnActor<AInventoryItemActor>(AInventoryItemActor::StaticClass(), SpawnLocation, SpawnRotation, SpawnParams);
+	// Ensure the ItemActorClass is set in the Blueprint defaults
+	if (!ItemActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("OnDropButtonClicked: ItemActorClass is not set in ActionMenuWidget defaults!"));
+		RemoveFromParent();
+		return;
+	}
+
+	// Spawn the specific Blueprint class, not the base C++ class
+	AInventoryItemActor* DroppedActor = GetWorld()->SpawnActor<AInventoryItemActor>(ItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
 	
 	if (DroppedActor)
 	{
