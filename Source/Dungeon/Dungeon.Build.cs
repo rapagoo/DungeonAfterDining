@@ -20,7 +20,11 @@ public class Dungeon : ModuleRules
             "AnimGraphRuntime",
             "MotionWarping",
             "Niagara",
-            "NavigationSystem"});
+            "NavigationSystem",
+            "UMG",
+            "Slate",
+            "SlateCore",
+		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });
 

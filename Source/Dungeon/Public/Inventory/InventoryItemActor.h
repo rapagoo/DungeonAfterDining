@@ -48,4 +48,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Inventory")
 	FSlotStruct GetItemData() const { return Item; }
 
+	// Allows external objects to set the item data for this actor
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void SetItemData(const FSlotStruct& NewItem) { Item = NewItem; /* Potentially call RefreshWidgetDisplay or similar if this actor has UI */ }
+
 };

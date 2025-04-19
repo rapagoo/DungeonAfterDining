@@ -57,6 +57,7 @@ AWarriorHeroCharacter::AWarriorHeroCharacter()
 
 	// Temporarily disabled Inventory Component creation
 	// InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
+	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 }
 
 UPawnCombatComponent* AWarriorHeroCharacter::GetPawnCombatComponent() const
@@ -107,6 +108,16 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 			UE_LOG(LogTemp, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
 		}
 		*/
+		// Bind inventory actions if the component is valid
+		if (InventoryComponent)
+		{
+			InventoryComponent->SetupInputBinding(EnhancedInputComponent);
+			UE_LOG(LogTemp, Log, TEXT("InventoryComponent input binding setup called for %s"), *GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
+		}
 	}
 	else
 	{

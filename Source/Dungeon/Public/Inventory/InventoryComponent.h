@@ -23,6 +23,12 @@ public:
 	// Sets default values for this component's properties
 	UInventoryComponent();
 
+	// --- Inventory Data ---
+
+	// Holds all inventory slots using an array
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Inventory", meta=(SaveGame))
+	TArray<FSlotStruct> InventorySlots;
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -60,12 +66,6 @@ protected:
 	// Input Action for picking up items
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
 	UInputAction* PickupAction;
-
-	// --- Inventory Data ---
-
-	// Holds all inventory slots using an array
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Inventory", meta=(SaveGame))
-	TArray<FSlotStruct> InventorySlots;
 
 public:
 	// Called by the owning actor to bind input actions

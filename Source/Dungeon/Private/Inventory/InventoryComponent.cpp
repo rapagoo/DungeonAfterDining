@@ -14,9 +14,10 @@
 #include "Kismet/KismetSystemLibrary.h" // For SphereTraceSingle
 #include "DrawDebugHelpers.h" // For DrawDebugSphere (optional)
 // #include "Inventory/AllItemStruct.h" // No longer needed
-// Include the header for your specific inventory widget class if needed for casting
-// #include "UI/WBP_Inventory.h" 
 
+// Include necessary headers for casting
+#include "Characters/WarriorHeroCharacter.h" 
+#include "Inventory/InventoryWidget.h"
 
 // Sets default values for this component's properties
 UInventoryComponent::UInventoryComponent()
@@ -53,6 +54,14 @@ void UInventoryComponent::BeginPlay()
 		{
 			UE_LOG(LogTemp, Log, TEXT("Inventory Widget created."));
 			// Don't add to viewport here, ToggleInventory will handle it
+
+			// Set owner references after creation
+			AWarriorHeroCharacter* OwningCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
+			UInventoryWidget* TypedWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
+			if(TypedWidget && OwningCharacter)
+			{
+				TypedWidget->SetOwnerReferences(OwningCharacter, this);
+			}
 		}
 		else
 		{
@@ -111,6 +120,14 @@ void UInventoryComponent::ToggleInventory()
 	{
 		InventoryWidgetInstance = CreateWidget<UUserWidget>(PlayerController, InventoryWidgetClass);
 		if (!InventoryWidgetInstance) return; // Failed to create widget
+
+		// Set owner references after creation in ToggleInventory as well
+		AWarriorHeroCharacter* OwningCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
+		UInventoryWidget* TypedWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
+		if(TypedWidget && OwningCharacter)
+		{
+			TypedWidget->SetOwnerReferences(OwningCharacter, this);
+		}
 	}
 
 	if (!InventoryWidgetInstance) return; // No widget instance available
@@ -125,15 +142,36 @@ void UInventoryComponent::ToggleInventory()
 	}
 	else
 	{
+		// --- Start Opening Inventory --- 
+		UE_LOG(LogTemp, Log, TEXT("Attempting to open inventory..."));
+
+		if (!InventoryWidgetInstance)
+		{
+			UE_LOG(LogTemp, Error, TEXT("InventoryWidgetInstance is NULL before AddToViewport!"));
+			return; // Cannot proceed
+		}
+
 		InventoryWidgetInstance->AddToViewport();
+		UE_LOG(LogTemp, Log, TEXT("Called AddToViewport. IsInViewport: %s"), InventoryWidgetInstance->IsInViewport() ? TEXT("True") : TEXT("False"));
 
 		FInputModeUIOnly InputModeData;
-		InputModeData.SetWidgetToFocus(InventoryWidgetInstance->TakeWidget()); // Set focus to the widget
+		TSharedPtr<SWidget> WidgetToFocus = InventoryWidgetInstance->TakeWidget();
+		if (WidgetToFocus.IsValid())
+		{
+			InputModeData.SetWidgetToFocus(WidgetToFocus);
+			UE_LOG(LogTemp, Log, TEXT("SetWidgetToFocus successful."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("InventoryWidgetInstance->TakeWidget() returned invalid widget!"));
+		}
 		InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); // Match BP
 
 		PlayerController->SetInputMode(InputModeData);
+		UE_LOG(LogTemp, Log, TEXT("SetInputMode(UIOnly) called."));
+
 		PlayerController->SetShowMouseCursor(true); // Match BP
-		UE_LOG(LogTemp, Log, TEXT("Inventory Opened"));
+		UE_LOG(LogTemp, Log, TEXT("Inventory Opened successfully."));
 		
 		// Potentially update UI when opened
 		UpdateInventoryUI(); 
@@ -145,57 +183,63 @@ void UInventoryComponent::HandlePickup()
 	FSlotStruct FoundItemData;
 	AInventoryItemActor* FoundItemActor = nullptr;
 
-	UE_LOG(LogTemp, Log, TEXT("HandlePickup triggered."));
+	UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Function Called.")); // Log: HandlePickup start
 
 	if (TraceForItem(FoundItemData, FoundItemActor))
 	{
-		UE_LOG(LogTemp, Log, TEXT("Trace found item: %s"), *FoundItemData.ItemID.RowName.ToString());
-		if (AddItem(FoundItemData))
+		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace found item: %s (Actor: %s)"), 
+			*FoundItemData.ItemID.RowName.ToString(), 
+			FoundItemActor ? *FoundItemActor->GetName() : TEXT("None"));
+		
+		bool bAdded = AddItem(FoundItemData);
+		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] AddItem returned: %s"), bAdded ? TEXT("True") : TEXT("False"));
+
+		if (bAdded)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Item added successfully."));
+			UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Item added successfully."));
 			if (FoundItemActor)
 			{
-				UE_LOG(LogTemp, Log, TEXT("Destroying item actor: %s"), *FoundItemActor->GetName());
+				UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Destroying item actor: %s"), *FoundItemActor->GetName());
 				FoundItemActor->Destroy();
 			}
 			UpdateInventoryUI();
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Failed to add item to inventory."));
+			UE_LOG(LogTemp, Warning, TEXT("[HandlePickup] Failed to add item to inventory."));
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Log, TEXT("Trace did not find any item."));
+		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace did not find any suitable item."));
 	}
 }
 
 bool UInventoryComponent::AddItem(const FSlotStruct& ItemToAdd)
 {
-	UE_LOG(LogTemp, Log, TEXT("AddItem: Trying to add %s (Qty: %d)"), *ItemToAdd.ItemID.RowName.ToString(), ItemToAdd.Quantity);
+	UE_LOG(LogTemp, Log, TEXT("[AddItem] Function Called. Trying to add %s (Qty: %d)"), *ItemToAdd.ItemID.RowName.ToString(), ItemToAdd.Quantity);
 
 	if (!ItemDataTable.IsValid() || ItemToAdd.ItemID.RowName.IsNone() || ItemToAdd.Quantity <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AddItem: Invalid ItemDataTable or ItemToAdd data."));
+		UE_LOG(LogTemp, Warning, TEXT("[AddItem] Invalid ItemDataTable or ItemToAdd data."));
 		return false;
 	}
 
 	UDataTable* LoadedItemTable = ItemDataTable.LoadSynchronous();
 	if (!LoadedItemTable)
 	{
-		UE_LOG(LogTemp, Error, TEXT("AddItem: Failed to load ItemDataTable: %s"), *ItemDataTable.ToString());
+		UE_LOG(LogTemp, Error, TEXT("[AddItem] Failed to load ItemDataTable: %s"), *ItemDataTable.ToString());
 		return false;
 	}
 
-	// --- Logic for Adding Item to TArray<FSlotStruct> based on BP --- 
-
+	UE_LOG(LogTemp, Log, TEXT("[AddItem] Checking for existing stacks..."));
 	// 1. Try to stack with existing items
 	for (FSlotStruct& ExistingSlot : InventorySlots)
 	{
 		// Check if slot has the same item ID (and is not empty)
 		if (ExistingSlot.ItemID.RowName == ItemToAdd.ItemID.RowName && !ExistingSlot.ItemID.RowName.IsNone()) 
 		{
+			UE_LOG(LogTemp, Log, TEXT("[AddItem] Found potential stack slot with %s"), *ExistingSlot.ItemID.RowName.ToString());
 			// Get Item Definition from Data Table to find StackSize
 			const FString ContextString = TEXT("AddItem Stack Check");
 			FInventoryItemStruct* ItemDefinition = LoadedItemTable->FindRow<FInventoryItemStruct>(ItemToAdd.ItemID.RowName, ContextString);
@@ -203,59 +247,41 @@ bool UInventoryComponent::AddItem(const FSlotStruct& ItemToAdd)
 			if (ItemDefinition)
 			{
 				const int32 MaxStackSize = ItemDefinition->StackSize > 0 ? ItemDefinition->StackSize : 1; // Use StackSize from DT, ensure at least 1
+				UE_LOG(LogTemp, Log, TEXT("[AddItem] Max stack size: %d, Current quantity: %d"), MaxStackSize, ExistingSlot.Quantity);
 
 				// Check if the existing slot can stack more (Quantity < MaxStackSize)
 				if (ExistingSlot.Quantity < MaxStackSize)
 				{
 					// Calculate how much can be added
 					int32 QuantityToAdd = FMath::Min(ItemToAdd.Quantity, MaxStackSize - ExistingSlot.Quantity);
+					UE_LOG(LogTemp, Log, TEXT("[AddItem] Can add %d quantity to stack."), QuantityToAdd);
 
 					if (QuantityToAdd > 0)
 					{
 						ExistingSlot.Quantity += QuantityToAdd;
-						UE_LOG(LogTemp, Log, TEXT("Stacked %d of %s. New quantity: %d"), QuantityToAdd, *ItemToAdd.ItemID.RowName.ToString(), ExistingSlot.Quantity);
-						
-						// NOTE: This BP logic assumes if ANY stacking happens, the function returns true.
-						// A more robust system might need to handle remaining quantity if ItemToAdd.Quantity > QuantityToAdd
-						// and continue to find empty slots for the remainder.
-						// For now, mirroring BP: return true if any amount was stacked.
+						UE_LOG(LogTemp, Log, TEXT("[AddItem] Stacked %d of %s. New quantity: %d. Returning true."), QuantityToAdd, *ItemToAdd.ItemID.RowName.ToString(), ExistingSlot.Quantity);
 						return true; 
 					}
-					else
-					{
-						// This case should technically not happen if ExistingSlot.Quantity < MaxStackSize, but included for completeness
-						UE_LOG(LogTemp, Log, TEXT("Cannot stack %s, calculated QuantityToAdd is 0."), *ItemToAdd.ItemID.RowName.ToString());
-					}
-				}
-				else
-				{
-					// Existing slot is already full
-					UE_LOG(LogTemp, Log, TEXT("Cannot stack %s, existing slot is full (Qty: %d, Max: %d)."), *ItemToAdd.ItemID.RowName.ToString(), ExistingSlot.Quantity, MaxStackSize);
 				}
 			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("AddItem: Could not find item definition for %s in ItemDataTable."), *ItemToAdd.ItemID.RowName.ToString());
-				// Decide how to handle - maybe treat as unstackable? For now, continue loop.
-			}
-		} // End if ItemIDs match
-	} // End for loop (stacking check)
+		}
+	}
 
-	// --- Completed Part (Find Empty Slot) would go here --- 
-
-	// 2. If not stacked, find an empty slot (Placeholder for now, based on previous code)
-	for (FSlotStruct& ExistingSlot : InventorySlots)
+	UE_LOG(LogTemp, Log, TEXT("[AddItem] No suitable stack found. Checking for empty slots..."));
+	// 2. If not stacked, find an empty slot
+	for (int32 Index = 0; Index < InventorySlots.Num(); ++Index) // Use index for logging
 	{
+		 FSlotStruct& ExistingSlot = InventorySlots[Index];
 		if (ExistingSlot.ItemID.RowName.IsNone()) // Check if slot is empty 
 		{
 			ExistingSlot = ItemToAdd; // Add item to the empty slot
-			UE_LOG(LogTemp, Log, TEXT("Added item %s to an empty slot."), *ItemToAdd.ItemID.RowName.ToString());
+			UE_LOG(LogTemp, Log, TEXT("[AddItem] Added item %s to empty slot at index %d. Returning true."), *ItemToAdd.ItemID.RowName.ToString(), Index);
 			return true; // Successfully added to empty slot
 		}
 	}
 
 	// 3. If no stacking possible and no empty slots
-	UE_LOG(LogTemp, Warning, TEXT("Inventory full or could not add item %s."), *ItemToAdd.ItemID.RowName.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("[AddItem] Inventory full or could not add item %s. Returning false."), *ItemToAdd.ItemID.RowName.ToString());
 	return false; 
 }
 
@@ -290,13 +316,13 @@ void UInventoryComponent::UpdateInventoryUI()
 
 bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor*& OutItemActor)
 {
-	UE_LOG(LogTemp, Log, TEXT("TraceForItem called."));
+	// UE_LOG(LogTemp, VeryVerbose, TEXT("[TraceForItem] Function Called.")); // Reduce log spam if needed
 	OutItemActor = nullptr; // Initialize output actor
 
 	AActor* Owner = GetOwner();
 	if (!Owner) 
 	{
-		UE_LOG(LogTemp, Error, TEXT("TraceForItem: Owner is null."));
+		UE_LOG(LogTemp, Error, TEXT("[TraceForItem] Owner is null."));
 		return false;
 	}
 
@@ -309,49 +335,53 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 	ActorsToIgnore.Add(Owner); // Ignore self
 
 	FHitResult HitResult;
+	const ETraceTypeQuery TraceChannel = UEngineTypes::ConvertToTraceType(ECC_Visibility);
+
 	bool bHit = UKismetSystemLibrary::SphereTraceSingle(
 		GetWorld(),
 		StartLocation,
 		EndLocation,
 		SphereRadius,
-		UEngineTypes::ConvertToTraceType(ECC_Visibility), // Trace Channel
+		TraceChannel, 
 		false, // bTraceComplex
 		ActorsToIgnore,
 		EDrawDebugTrace::None, // Draw Debug Type (set to ForDuration for testing)
 		HitResult,
-		true  // bIgnoreSelf (redundant as Owner is in ActorsToIgnore, but good practice)
+		true  // bIgnoreSelf
 	);
 
-	// Optional: Draw debug sphere
-	// DrawDebugSphere(GetWorld(), StartLocation, SphereRadius, 12, FColor::Yellow, false, 1.0f);
-	// DrawDebugSphere(GetWorld(), EndLocation, SphereRadius, 12, FColor::Orange, false, 1.0f);
-	// DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Red, false, 1.0f);
+	// --- Enable Debug Drawing --- 
+#if ENABLE_DRAW_DEBUG
+	DrawDebugSphere(GetWorld(), StartLocation, SphereRadius, 12, FColor::Yellow, false, 2.0f);
+	DrawDebugSphere(GetWorld(), EndLocation, SphereRadius, 12, FColor::Orange, false, 2.0f);
+	DrawDebugLine(GetWorld(), StartLocation, EndLocation, FColor::Red, false, 2.0f);
+	if(bHit)
+	{
+		DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, SphereRadius, 12, FColor::Green, false, 2.0f);
+	}
+#endif
+	// --- End Debug Drawing --- 
 
 	if (bHit && HitResult.GetActor())
 	{
-		UE_LOG(LogTemp, Log, TEXT("SphereTrace hit actor: %s"), *HitResult.GetActor()->GetName());
-		// Cast the hit actor to our C++ item actor class
+		UE_LOG(LogTemp, Log, TEXT("[TraceForItem] SphereTrace hit actor: %s (Component: %s)"), 
+			*HitResult.GetActor()->GetName(), 
+			HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("None"));
+		
 		AInventoryItemActor* HitItemActor = Cast<AInventoryItemActor>(HitResult.GetActor());
 		if (HitItemActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Hit actor is an AInventoryItemActor."));
+			UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Successfully cast hit actor to AInventoryItemActor."));
 			OutItemActor = HitItemActor;
 			OutItem = HitItemActor->GetItemData(); // Use the getter
 			return true;
 		}
 		else
 		{
-			UE_LOG(LogTemp, Log, TEXT("Hit actor is NOT an AInventoryItemActor."));
+			UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Failed to cast hit actor (%s) to AInventoryItemActor."), *HitResult.GetActor()->GetName());
 		}
 	}
-	else if (bHit)
-	{
-		UE_LOG(LogTemp, Log, TEXT("SphereTrace hit something, but GetActor() was null."));
-	}
-	else
-	{
-		//UE_LOG(LogTemp, Log, TEXT("SphereTrace did not hit anything.")); // Can be spammy
-	}
+	// else { UE_LOG(LogTemp, VeryVerbose, TEXT("[TraceForItem] SphereTrace did not hit anything.")); } // Reduce log spam
 
 	return false;
 }
