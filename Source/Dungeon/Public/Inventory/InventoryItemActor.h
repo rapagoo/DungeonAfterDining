@@ -31,6 +31,9 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	// Called after the actor has been spawned
+	virtual void PostActorCreated() override;
+
 	// Called when an instance of this class is placed or updated in the editor
 	virtual void OnConstruction(const FTransform& Transform) override;
 
@@ -61,6 +64,9 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
 	void OnItemDataUpdated(); // Restored event
 
+	// Flag to enable physics on the next tick after dropping
+	bool bEnablePhysicsRequested = false;
+
 public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -72,5 +78,12 @@ public:
 	// Allows external objects to set the item data for this actor and update visuals
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void SetItemData(const FSlotStruct& NewItem);
+
+	// Allows setting the static mesh (primarily for internal use or specific cases)
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void SetStaticMesh(UStaticMesh* NewStaticMesh);
+
+	// Function to request physics enable on next tick
+	void RequestEnablePhysics();
 
 };

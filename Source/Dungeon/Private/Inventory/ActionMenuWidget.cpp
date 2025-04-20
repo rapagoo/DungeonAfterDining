@@ -5,12 +5,11 @@
 #include "Components/Image.h"
 #include "Characters/WarriorHeroCharacter.h"
 #include "Inventory/InventoryComponent.h"
-#include "Inventory/InventoryItemActor.h" // Needed for spawning item actor
+#include "Inventory/InventoryItemActor.h" // Needed for spawning item actor, ALSO brings in ProceduralMeshComponent.h transitively
 #include "Inventory/InvenItemEnum.h"     // For EInventoryItemType
 #include "Kismet/GameplayStatics.h"   // For GetPlayerCharacter, GetPlayerController
 #include "Inventory/SlotStruct.h"
 #include "Inventory/SlotWidget.h" // Include SlotWidget header
-#include "Inventory/InventoryComponent.h" // Needed to get InventoryWidgetInstance
 #include "Inventory/InventoryWidget.h" // Needed for casting InventoryWidgetInstance
 #include "GameFramework/PlayerController.h" // Needed for SetInputMode
 
@@ -136,8 +135,10 @@ void UActionMenuWidget::OnDropButtonClicked()
 	if (DroppedActor)
 	{
 		// IMPORTANT: Set the item data on the spawned actor!
-		// DroppedActor->Item = ItemToActOn; // Direct access not allowed
-		DroppedActor->SetItemData(ItemToActOn); // Use the public setter function, and use ItemToActOn
+		DroppedActor->SetItemData(ItemToActOn);
+
+		// Request physics to be enabled on the actor's next tick
+		DroppedActor->RequestEnablePhysics(); 
 
 		// We also need to trigger its OnConstruction manually if the item property was ExposeOnSpawn=false
 		// and relied on construction script logic that might not run automatically here.

@@ -359,9 +359,9 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 		EndLocation,
 		SphereRadius,
 		TraceChannel, 
-		false, // bTraceComplex
+		true, // bTraceComplex
 		ActorsToIgnore,
-		EDrawDebugTrace::None, 
+		EDrawDebugTrace::None, // Disable debug drawing
 		HitResult,
 		true  // bIgnoreSelf
 	);

@@ -5,37 +5,54 @@
 //#include "Components/ProceduralMeshComponent.h" // Standard path commented out
 #include "ProceduralMeshComponent.h" // Direct path as per user preference
 #include "KismetProceduralMeshLibrary.h" // Needed for CopyProceduralMeshFromStaticMeshComponent
+//#include "Components/PrimitiveComponent.h" // Removed, not needed for BodySetup approach
 #include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
 #include "Inventory/InvenItemStruct.h" // For FInventoryItemStruct (Data Table Row Type)
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
 #include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
+#include "PhysicsEngine/BodySetup.h" // Correct path for UBodySetup
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
 {
- 	// Set this actor to call Tick() every frame. Typically off for construction script logic.
-	PrimaryActorTick.bCanEverTick = false;
+ 	// Set this actor to call Tick() every frame.
+	PrimaryActorTick.bCanEverTick = true; // Enable Tick
 
 	// Create the Procedural Mesh Component and set as root
 	ProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMeshComponent"));
 	RootComponent = ProceduralMeshComponent;
-	ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName); // Or appropriate profile
+    // Set a default blocking profile initially to prevent falling through floor on spawn
+	ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName);
 	ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	ProceduralMeshComponent->SetSimulatePhysics(false); // Usually false initially for items
+	ProceduralMeshComponent->SetSimulatePhysics(false); // Start with physics off
 
 	// Create the temporary source Static Mesh Component
 	TemporarySourceMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TemporarySourceMeshComponent"));
 	TemporarySourceMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // No collision needed
 	TemporarySourceMeshComponent->SetVisibility(false); // Not visible
 	TemporarySourceMeshComponent->SetupAttachment(RootComponent); // Attach to root, although not strictly necessary if only used for data
+
+    if (ItemData) {
+        UpdateMeshFromData();
+    }
 }
 
 // Called when the game starts or when spawned
 void AInventoryItemActor::BeginPlay()
 {
 	Super::BeginPlay();
-	// Initial mesh update can be handled by OnConstruction or SetItemData
+
+    // Ensure mesh is updated if it wasn't in PostActorCreated
+    if (!ItemData && !Item.ItemID.RowName.IsNone()) {
+        // If ItemID is set but ItemData wasn't loaded yet (e.g., deferred), try setting it now.
+        SetItemData(Item);
+    } else if (ItemData) {
+         // If ItemData was already set (e.g., in editor or PostActorCreated), ensure mesh reflects it.
+         UpdateMeshFromData();
+    } else {
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: BeginPlay: No valid ItemID or ItemData to initialize mesh."), *GetNameSafe(this));
+    }
 }
 
 // Called when an instance of this class is placed or updated in the editor
@@ -115,12 +132,64 @@ void AInventoryItemActor::UpdateMeshFromData()
         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Clearing ProceduralMeshComponent as no valid mesh was set."), *GetNameSafe(this));
         ProceduralMeshComponent->ClearAllMeshSections();
     }
+
+    // After copying or clearing, ensure collision settings are suitable for physics
+    if (ProceduralMeshComponent)
+    {
+        UBodySetup* BodySetup = ProceduralMeshComponent->GetBodySetup();
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: GetBodySetup result: %s"), *GetNameSafe(this), BodySetup ? TEXT("Valid") : TEXT("NULL")); // Log BodySetup validity
+        if (BodySetup)
+        {
+            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex; // Use simple collision for physics
+            ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Ensure physics profile
+            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled for physics
+            ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // Also ensure it blocks Visibility traces here
+            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Applied collision settings (Profile: %s, Enabled: %s)"), 
+                *GetNameSafe(this), 
+                *ProceduralMeshComponent->GetCollisionProfileName().ToString(), 
+                ProceduralMeshComponent->IsCollisionEnabled() ? TEXT("True") : TEXT("False")); // Log applied settings
+
+            // Mark collision state as dirty to apply changes
+            ProceduralMeshComponent->MarkRenderStateDirty();
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get BodySetup from ProceduralMeshComponent for collision setup."), *GetNameSafe(this));
+        }
+    }
+}
+
+void AInventoryItemActor::RequestEnablePhysics()
+{
+    bEnablePhysicsRequested = true;
 }
 
 // Called every frame
 void AInventoryItemActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+    if (bEnablePhysicsRequested)
+    {
+        UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(GetRootComponent());
+        if (ProcMesh && !ProcMesh->IsSimulatingPhysics()) // Check if not already simulating
+        {
+            // Log current state before enabling physics
+            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Tick - Enabling physics. Current State: Profile=%s, Enabled=%s, WorldStaticResponse=%d"), 
+                *GetNameSafe(this), 
+                *ProcMesh->GetCollisionProfileName().ToString(), 
+                ProcMesh->IsCollisionEnabled() ? TEXT("True") : TEXT("False"),
+                ProcMesh->GetCollisionResponseToChannel(ECC_WorldStatic)); // Log current settings
+
+            // Ensure it blocks the ground just in case
+            ProcMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); 
+            ProcMesh->SetSimulatePhysics(true);
+            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Enabled physics in Tick after request."), *GetNameSafe(this));
+            // Optionally disable tick after physics is enabled if no longer needed
+            // SetActorTickEnabled(false); 
+        }
+        bEnablePhysicsRequested = false; // Reset the flag regardless of success
+    }
 }
 
 // Set item data and update the mesh
@@ -166,4 +235,83 @@ void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
 
 	UpdateMeshFromData(); // Update visual representation
 	OnItemDataUpdated(); // Call the notification event
+
+    // REMOVED: Do not enable physics here. Physics should be enabled externally only when dropped.
+    // UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(GetRootComponent());
+    // if (ProcMesh)
+    // {
+    //     ProcMesh->SetSimulatePhysics(true);
+    //     UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Enabled physics in SetItemData after setup."), *GetNameSafe(this));
+    // }
+    // else
+    // {
+    //     UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get ProcMesh in SetItemData to enable physics."), *GetNameSafe(this));
+    // }
+}
+
+// Called when the actor is done spawning
+void AInventoryItemActor::PostActorCreated()
+{
+    Super::PostActorCreated();
+
+    // Defer mesh update until BeginPlay if ItemData is not yet set
+    if (ItemData) {
+        UpdateMeshFromData();
+    }
+}
+
+void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
+{
+    // Use the correct component name declared in the header
+    if (!TemporarySourceMeshComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - TemporarySourceMeshComponent is null!"));
+        return;
+    }
+    if (!ProceduralMeshComponent) // This check is fine
+    {
+         UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - ProceduralMeshComponent is null!"));
+         return;
+    }
+
+    // Use the correct component name
+    TemporarySourceMeshComponent->SetStaticMesh(NewStaticMesh);
+
+    if (NewStaticMesh)
+    {
+        // Copy mesh data from the correct component
+        UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(
+            TemporarySourceMeshComponent, // Use the correct source component
+            0, // LOD Index
+            ProceduralMeshComponent,
+            true // Create Collision
+        );
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetStaticMesh: Copied mesh from StaticMesh '%s' to ProceduralMeshComponent."), *GetNameSafe(this), *NewStaticMesh->GetName());
+    }
+    else
+    {
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetStaticMesh: NewStaticMesh is null, clearing ProceduralMeshComponent."), *GetNameSafe(this));
+        // If NewStaticMesh is null, clear the procedural mesh
+        ProceduralMeshComponent->ClearAllMeshSections();
+    }
+
+    // After copying or clearing, ensure collision settings are suitable for physics
+    if (ProceduralMeshComponent)
+    {
+        UBodySetup* BodySetup = ProceduralMeshComponent->GetBodySetup();
+        if (BodySetup)
+        {
+            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex; // Use simple collision for physics
+            ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Ensure physics profile
+            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled for physics
+            ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // Also ensure it blocks Visibility traces here
+
+            // Mark collision state as dirty to apply changes
+            ProceduralMeshComponent->MarkRenderStateDirty();
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get BodySetup from ProceduralMeshComponent for collision setup."), *GetNameSafe(this));
+        }
+    }
 }
