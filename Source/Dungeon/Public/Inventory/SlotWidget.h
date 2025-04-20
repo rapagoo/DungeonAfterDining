@@ -107,4 +107,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Slot Functions") // Allow BP override/call if needed
 	void UseItemInSlot();
 
+	/** Returns the Owning Inventory Component **/
+	UFUNCTION(BlueprintPure, Category = "Slot Functions")
+	UInventoryComponent* GetOwnerInventory() const { return OwnerInventory; }
+
 }; 

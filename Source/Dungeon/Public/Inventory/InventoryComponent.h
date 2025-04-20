@@ -90,6 +90,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void UpdateInventoryUI();
 
+	/** Returns the created inventory widget instance (may be null) */
+	UFUNCTION(BlueprintPure, Category = "UI")
+	UUserWidget* GetInventoryWidgetInstance() const { return InventoryWidgetInstance; }
+
 protected:
 	// Helper function to trace for an item actor
 	// Returns true if found, provides the item data and the actor itself

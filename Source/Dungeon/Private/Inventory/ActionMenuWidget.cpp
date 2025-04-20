@@ -7,9 +7,12 @@
 #include "Inventory/InventoryComponent.h"
 #include "Inventory/InventoryItemActor.h" // Needed for spawning item actor
 #include "Inventory/InvenItemEnum.h"     // For EInventoryItemType
-#include "Kismet/GameplayStatics.h"   // For GetPlayerCharacter
+#include "Kismet/GameplayStatics.h"   // For GetPlayerCharacter, GetPlayerController
 #include "Inventory/SlotStruct.h"
 #include "Inventory/SlotWidget.h" // Include SlotWidget header
+#include "Inventory/InventoryComponent.h" // Needed to get InventoryWidgetInstance
+#include "Inventory/InventoryWidget.h" // Needed for casting InventoryWidgetInstance
+#include "GameFramework/PlayerController.h" // Needed for SetInputMode
 
 void UActionMenuWidget::NativeConstruct()
 {
@@ -81,6 +84,22 @@ void UActionMenuWidget::OnUseButtonClicked()
 	}
 
 	// Close the menu after action
+	// Set focus back to the Inventory Widget before removing self
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	UInventoryComponent* OwnerInvComp = OwningSlotWidget ? OwningSlotWidget->GetOwnerInventory() : nullptr;
+	if (PC && OwnerInvComp)
+	{
+		UUserWidget* InvWidgetInstance = OwnerInvComp->GetInventoryWidgetInstance();
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InvWidgetInstance);
+		if (InventoryWidget)
+		{
+			FInputModeUIOnly InputModeData;
+			InputModeData.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
+			PC->SetInputMode(InputModeData);
+			UE_LOG(LogTemp, Log, TEXT("OnUseButtonClicked: Set focus back to InventoryWidget."));
+		}
+	}
 	RemoveFromParent(); 
 }
 
@@ -145,6 +164,22 @@ void UActionMenuWidget::OnDropButtonClicked()
 	}
 
 	// 3. Close the menu
+	// Set focus back to the Inventory Widget before removing self
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	UInventoryComponent* OwnerInvComp = OwningSlotWidget ? OwningSlotWidget->GetOwnerInventory() : nullptr;
+	if (PC && OwnerInvComp)
+	{
+		UUserWidget* InvWidgetInstance = OwnerInvComp->GetInventoryWidgetInstance();
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InvWidgetInstance);
+		if (InventoryWidget)
+		{
+			FInputModeUIOnly InputModeData;
+			InputModeData.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
+			PC->SetInputMode(InputModeData);
+			UE_LOG(LogTemp, Log, TEXT("OnDropButtonClicked: Set focus back to InventoryWidget."));
+		}
+	}
 	RemoveFromParent();
 	
 	// Focusing the main inventory might be better handled by the inventory component
@@ -154,6 +189,22 @@ void UActionMenuWidget::OnDropButtonClicked()
 void UActionMenuWidget::OnCancelButtonClicked()
 {
 	UE_LOG(LogTemp, Log, TEXT("Cancel Button Clicked"));
+	// Set focus back to the Inventory Widget before removing self
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	UInventoryComponent* OwnerInvComp = OwningSlotWidget ? OwningSlotWidget->GetOwnerInventory() : nullptr;
+	if (PC && OwnerInvComp)
+	{
+		UUserWidget* InvWidgetInstance = OwnerInvComp->GetInventoryWidgetInstance();
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InvWidgetInstance);
+		if (InventoryWidget)
+		{
+			FInputModeUIOnly InputModeData;
+			InputModeData.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
+			PC->SetInputMode(InputModeData);
+			UE_LOG(LogTemp, Log, TEXT("OnCancelButtonClicked: Set focus back to InventoryWidget."));
+		}
+	}
 	RemoveFromParent();
 }
 
