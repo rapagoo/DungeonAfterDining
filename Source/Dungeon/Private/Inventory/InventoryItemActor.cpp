@@ -1,7 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Inventory/InventoryItemActor.h"
-#include "Components/StaticMeshComponent.h"
+//#include "Components/StaticMeshComponent.h" // Now included in header
+//#include "Components/ProceduralMeshComponent.h" // Standard path commented out
+#include "ProceduralMeshComponent.h" // Direct path as per user preference
+#include "KismetProceduralMeshLibrary.h" // Needed for CopyProceduralMeshFromStaticMeshComponent
 #include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
 #include "Inventory/InvenItemStruct.h" // For FInventoryItemStruct (Data Table Row Type)
@@ -12,99 +15,105 @@
 AInventoryItemActor::AInventoryItemActor()
 {
  	// Set this actor to call Tick() every frame. Typically off for construction script logic.
-	PrimaryActorTick.bCanEverTick = false; 
+	PrimaryActorTick.bCanEverTick = false;
 
-	// Create the Static Mesh Component and set as root
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
-	RootComponent = StaticMeshComponent;
+	// Create the Procedural Mesh Component and set as root
+	ProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMeshComponent"));
+	RootComponent = ProceduralMeshComponent;
+	ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName); // Or appropriate profile
+	ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	ProceduralMeshComponent->SetSimulatePhysics(false); // Usually false initially for items
 
-	// Enable physics simulation for the mesh
-	StaticMeshComponent->SetSimulatePhysics(true);
-	StaticMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Use standard PhysicsActor profile
-	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Enable physics and query collisions
+	// Create the temporary source Static Mesh Component
+	TemporarySourceMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TemporarySourceMeshComponent"));
+	TemporarySourceMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // No collision needed
+	TemporarySourceMeshComponent->SetVisibility(false); // Not visible
+	TemporarySourceMeshComponent->SetupAttachment(RootComponent); // Attach to root, although not strictly necessary if only used for data
 }
 
 // Called when the game starts or when spawned
 void AInventoryItemActor::BeginPlay()
 {
 	Super::BeginPlay();
-	// Initial mesh update is handled by OnConstruction or SetItemData
+	// Initial mesh update can be handled by OnConstruction or SetItemData
 }
 
 // Called when an instance of this class is placed or updated in the editor
 void AInventoryItemActor::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
-    UpdateStaticMesh(); // Call the new update function
+    // Try to load data table row based on Item.ItemID if DataTable is assigned
+    if (InventoryDataTable.IsValid() && Item.ItemID.DataTable == nullptr) {
+        Item.ItemID.DataTable = InventoryDataTable.LoadSynchronous(); // Auto-assign if not set in ItemID?
+    }
+    // Look up item data and update mesh in construction script
+    if (Item.ItemID.DataTable && !Item.ItemID.RowName.IsNone())
+    {
+        ItemData = Item.ItemID.DataTable->FindRow<FInventoryItemStruct>(Item.ItemID.RowName, TEXT("OnConstruction"));
+    }
+    else
+    {
+        ItemData = nullptr;
+    }
+    UpdateMeshFromData(); // Call the update function
 }
 
-void AInventoryItemActor::UpdateStaticMesh()
+// Renamed from UpdateStaticMesh, uses TemporarySourceMeshComponent now
+void AInventoryItemActor::UpdateMeshFromData()
 {
-	if (!StaticMeshComponent) 
+	if (!ProceduralMeshComponent || !TemporarySourceMeshComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateStaticMesh: StaticMeshComponent is missing!"), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: ProceduralMeshComponent or TemporarySourceMeshComponent is missing!"), *GetNameSafe(this));
         return;
     }
 
-    // Default to clearing the mesh
     UStaticMesh* MeshToSet = nullptr;
-    FName ItemRowName = Item.ItemID.RowName; // Get the selected row name
 
-    // Attempt to load the main data table assigned to the actor
-    UDataTable* ItemTable = InventoryDataTable.LoadSynchronous();
-
-    if (ItemTable && ItemRowName.IsValid() && !ItemRowName.IsNone())
+    // Check if ItemData is valid (was looked up in SetItemData or OnConstruction)
+	if (ItemData)
     {
-        const FString ContextString = GetName() + TEXT(" UpdateStaticMesh"); // Updated context
-        FInventoryItemStruct* ItemData = ItemTable->FindRow<FInventoryItemStruct>(ItemRowName, ContextString);
-
-        if (ItemData)
+        if (!ItemData->Mesh.IsNull())
         {
-            // Row found, try to load the mesh assigned in the data table row
             MeshToSet = ItemData->Mesh.LoadSynchronous();
-
-            // *** 중요: 데이터 테이블에서 ItemType을 읽어와 멤버 변수에 저장 ***
-            Item.ItemType = ItemData->ItemType; // Ensure ItemType is updated from DT
-
             if (!MeshToSet)
             {
-                // Log if mesh loading failed, but row was found
-                UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Row '%s' found, but failed to load Mesh asset '%s' from DataTable '%s'. Check Mesh path in DT."), 
-                    *GetName(), *ItemRowName.ToString(), *ItemData->Mesh.ToString(), *ItemTable->GetName());
-            }
-            else
-            {
-                 UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Row '%s' found. Setting mesh '%s'."), // Simplified log
-                    *GetName(), *ItemRowName.ToString(), *MeshToSet->GetName());
+                UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: Failed to load Static Mesh from reference '%s' in ItemData. Clearing mesh."),
+                    *GetNameSafe(this),
+                    *ItemData->Mesh.ToString());
             }
         }
         else
         {
-            // Log if the row name wasn't found in the specified table
-            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Row '%s' not found in DataTable '%s'. Check Row Name selection."), 
-                *GetName(), *ItemRowName.ToString(), *ItemTable->GetName());
+            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: Mesh reference in ItemData is null. Clearing mesh."), *GetNameSafe(this));
         }
     }
-    else if (!ItemRowName.IsValid() || ItemRowName.IsNone())
+    else // ItemData is null
     {
-         // Log if no valid Row Name is selected (e.g., after SetItemData with empty struct)
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: ItemID.RowName is not valid or None."), *GetName()); 
-    }
-    else // !ItemTable
-    {
-         // Log if the main InventoryDataTable property is not set on the actor
-         UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: InventoryDataTable property not set in Details panel."), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: ItemData is null. Clearing mesh."), *GetNameSafe(this));
+        // Ensure MeshToSet remains nullptr
     }
 
-    // Apply the result (either the loaded mesh or nullptr)
-    // Only update if the mesh is actually different to prevent unnecessary updates
-    if (StaticMeshComponent->GetStaticMesh() != MeshToSet) 
+    // Set the loaded mesh (or nullptr) on the temporary source component
+    TemporarySourceMeshComponent->SetStaticMesh(MeshToSet);
+
+    // Copy from the temporary source component to the procedural mesh component
+    if (MeshToSet) // Only copy if we successfully loaded a mesh
     {
-       UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Setting Static Mesh to '%s'. Previous was '%s'."), 
-            *GetName(), 
-            MeshToSet ? *MeshToSet->GetName() : TEXT("nullptr"), 
-            StaticMeshComponent->GetStaticMesh() ? *StaticMeshComponent->GetStaticMesh()->GetName() : TEXT("nullptr"));
-       StaticMeshComponent->SetStaticMesh(MeshToSet);
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Copying mesh from TemporarySourceMeshComponent ('%s') to ProceduralMeshComponent."),
+                 *GetNameSafe(this),
+                 *MeshToSet->GetName());
+
+        UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(
+            TemporarySourceMeshComponent,
+            0,                            // LODIndex
+            ProceduralMeshComponent,      // Target ProcMeshComponent
+            true                          // Create collision
+        );
+    }
+    else // Clear the procedural mesh if no valid mesh was found/loaded
+    {
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Clearing ProceduralMeshComponent as no valid mesh was set."), *GetNameSafe(this));
+        ProceduralMeshComponent->ClearAllMeshSections();
     }
 }
 
@@ -118,5 +127,43 @@ void AInventoryItemActor::Tick(float DeltaTime)
 void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
 {
 	Item = NewItem;
-	UpdateStaticMesh(); // Call the update function after setting data
+
+	// Reset ItemData pointer initially
+	ItemData = nullptr;
+
+    // Assign the actor's default DataTable to the ItemID handle if it's not already set
+    // This assumes the RowName is valid for the actor's default table.
+    if (Item.ItemID.DataTable == nullptr && InventoryDataTable.IsValid() && !Item.ItemID.RowName.IsNone()) {
+        Item.ItemID.DataTable = InventoryDataTable.LoadSynchronous();
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetItemData: Assigned InventoryDataTable to ItemID.DataTable."), *GetNameSafe(this));
+    }
+
+	// Check if the provided ItemID has a valid DataTable and RowName
+	if (Item.ItemID.DataTable && !Item.ItemID.RowName.IsNone())
+	{
+		// Attempt to find the row in the DataTable
+        // Note: FindRow returns a non-const pointer, so ItemData should be non-const FInventoryItemStruct*
+		ItemData = Item.ItemID.DataTable->FindRow<FInventoryItemStruct>(Item.ItemID.RowName, TEXT("SetItemData"));
+
+		if (!ItemData)
+		{
+			// Log an error if the row was not found
+			UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SetItemData: Could not find Row '%s' in DataTable '%s'."),
+				*GetNameSafe(this),
+				*Item.ItemID.RowName.ToString(),
+				*Item.ItemID.DataTable->GetName());
+		}
+        else
+        {
+             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetItemData: Found ItemData for Row '%s'."), *GetNameSafe(this), *Item.ItemID.RowName.ToString());
+        }
+	}
+	else
+	{
+		// Log a warning if ItemID is not properly set
+		UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: SetItemData: ItemID is not valid (DataTable or RowName missing). Item.ItemID.RowName: %s"), *GetNameSafe(this), *Item.ItemID.RowName.ToString());
+	}
+
+	UpdateMeshFromData(); // Update visual representation
+	OnItemDataUpdated(); // Call the notification event
 }
