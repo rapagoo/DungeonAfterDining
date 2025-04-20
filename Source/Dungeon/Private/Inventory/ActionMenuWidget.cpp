@@ -30,9 +30,6 @@ void UActionMenuWidget::NativeConstruct()
 	if (CancelButton) CancelButton->OnHovered.AddDynamic(this, &UActionMenuWidget::OnCancelButtonHovered);
 	if (CancelButton) CancelButton->OnUnhovered.AddDynamic(this, &UActionMenuWidget::OnCancelButtonUnhovered);
 
-	// Bind the new Place button event
-	if (PlaceButton) PlaceButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnPlaceButtonClicked);
-
 	// Hide hover images initially
 	if (UseButtonHoverImage) UseButtonHoverImage->SetVisibility(ESlateVisibility::Hidden);
 	if (DropButtonHoverImage) DropButtonHoverImage->SetVisibility(ESlateVisibility::Hidden);
@@ -206,72 +203,6 @@ void UActionMenuWidget::OnCancelButtonClicked()
 			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
 			PC->SetInputMode(InputModeData);
 			UE_LOG(LogTemp, Log, TEXT("OnCancelButtonClicked: Set focus back to InventoryWidget."));
-		}
-	}
-	RemoveFromParent();
-}
-
-void UActionMenuWidget::OnPlaceButtonClicked()
-{
-	UE_LOG(LogTemp, Log, TEXT("Place Button Clicked for Item: %s at Index: %d"), *ItemToActOn.ItemID.RowName.ToString(), ItemSlotIndex);
-
-	// --- Input Validation --- 
-	if (!OwnerCharacter || !OwnerInventory || ItemSlotIndex < 0 || !PlaceableItemActorClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("OnPlaceButtonClicked: Invalid context, ItemSlotIndex, or PlaceableItemActorClass is not set."));
-		RemoveFromParent();
-		return;
-	}
-
-	// --- Spawn Logic --- 
-	// TODO: Determine a proper spawn location on the target table.
-	// For now, spawning slightly in front of the character.
-	FVector SpawnLocation = OwnerCharacter->GetActorLocation() + OwnerCharacter->GetActorForwardVector() * 50.0f + FVector(0,0,50.0f); // Adjust as needed
-	FRotator SpawnRotation = FRotator::ZeroRotator; // Or table's rotation?
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = OwnerCharacter;
-	SpawnParams.Instigator = OwnerCharacter;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-	AInventoryItemActor* PlacedActor = GetWorld()->SpawnActor<AInventoryItemActor>(PlaceableItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
-
-	if (PlacedActor)
-	{
-		UE_LOG(LogTemp, Log, TEXT("Successfully spawned PlaceableItemActor: %s"), *PlacedActor->GetName());
-		PlacedActor->SetItemData(ItemToActOn);
-
-		// --- Remove Item from Inventory --- 
-		// Call the new function in InventoryComponent
-		if (OwnerInventory->RemoveItemFromSlot(ItemSlotIndex, 1)) // Remove 1 item
-		{
-			UE_LOG(LogTemp, Log, TEXT("Item successfully removed from inventory via RemoveItemFromSlot."));
-			// UpdateInventoryUI is called inside RemoveItemFromSlot, no need to call again here
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Failed to remove item from slot %d using RemoveItemFromSlot."), ItemSlotIndex);
-		}
-
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to spawn PlaceableItemActor."));
-	}
-
-	// --- Set Focus & Close Menu --- 
-	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
-	UInventoryComponent* OwnerInvComp = OwningSlotWidget ? OwningSlotWidget->GetOwnerInventory() : nullptr;
-	if (PC && OwnerInvComp)
-	{
-		UUserWidget* InvWidgetInstance = OwnerInvComp->GetInventoryWidgetInstance();
-		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InvWidgetInstance);
-		if (InventoryWidget)
-		{
-			FInputModeUIOnly InputModeData;
-			InputModeData.SetWidgetToFocus(InventoryWidget->TakeWidget());
-			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
-			PC->SetInputMode(InputModeData);
-			UE_LOG(LogTemp, Log, TEXT("OnPlaceButtonClicked: Set focus back to InventoryWidget."));
 		}
 	}
 	RemoveFromParent();

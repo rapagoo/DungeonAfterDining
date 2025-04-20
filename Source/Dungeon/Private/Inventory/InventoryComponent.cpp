@@ -404,56 +404,6 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 	return false;
 }
 
-bool UInventoryComponent::RemoveItemFromSlot(int32 SlotIndex, int32 QuantityToRemove)
-{
-	UE_LOG(LogTemp, Log, TEXT("[RemoveItemFromSlot] Called for Index: %d, Quantity: %d"), SlotIndex, QuantityToRemove);
-
-	if (QuantityToRemove <= 0) 
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[RemoveItemFromSlot] QuantityToRemove must be positive."));
-		return false;
-	}
-
-	if (InventorySlots.IsValidIndex(SlotIndex))
-	{
-		FSlotStruct& Slot = InventorySlots[SlotIndex];
-
-		// Check if the slot is actually occupied and has enough quantity
-		if (!Slot.ItemID.RowName.IsNone() && Slot.Quantity >= QuantityToRemove)
-		{
-			Slot.Quantity -= QuantityToRemove;
-			UE_LOG(LogTemp, Log, TEXT("[RemoveItemFromSlot] Removed %d from slot %d. New quantity: %d"), 
-				QuantityToRemove, SlotIndex, Slot.Quantity);
-
-			// If quantity becomes zero or less, clear the slot entirely
-			if (Slot.Quantity <= 0)
-			{
-				InventorySlots[SlotIndex] = FSlotStruct(); // Reset to empty
-				UE_LOG(LogTemp, Log, TEXT("[RemoveItemFromSlot] Slot %d cleared as quantity reached zero."), SlotIndex);
-			}
-
-			// Update the UI after modification
-			UpdateInventoryUI(); 
-			return true; // Successfully removed
-		}
-		else if (Slot.ItemID.RowName.IsNone())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[RemoveItemFromSlot] Slot %d is already empty."), SlotIndex);
-			return false;
-		}
-		else // Slot.Quantity < QuantityToRemove
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[RemoveItemFromSlot] Not enough quantity in slot %d (Has: %d, Need: %d)."), 
-				SlotIndex, Slot.Quantity, QuantityToRemove);
-			return false;
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("[RemoveItemFromSlot] Invalid SlotIndex: %d"), SlotIndex);
-		return false;
-	}
-}
 
 // Called every frame
 void UInventoryComponent::TickComponent(float DeltaTime, ELevelTick TickType,
