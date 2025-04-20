@@ -79,6 +79,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void UpdateItemsInInventoryUI(const TArray<FSlotStruct>& AllItems);
 
+	/** Returns the Item Info Widget subobject **/
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	UItemInfoWidget* GetItemInfoWidget() const { return WBP_ItemInfo; }
+
 protected:
 	// Native overrides
 	virtual bool Initialize() override;

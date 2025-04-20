@@ -10,6 +10,7 @@
 #include "Inventory/SlotStruct.h"       // For FSlotStruct
 // Include your actual Slot Widget header if it has specific functions to call
 #include "Inventory/SlotWidget.h"
+#include "Inventory/InventoryComponent.h" // Include Inventory Component header
 #include "GameFramework/PlayerController.h" // For Input Mode setting
 #include "Input/Events.h" // For FKeyEvent, FReply
 #include "Framework/Application/SlateApplication.h" // For SetFocusToGameViewport
@@ -103,8 +104,24 @@ bool UInventoryWidget::Initialize()
 
 FReply UInventoryWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
+	// Check for 'I' key to toggle inventory close
+	if (InKeyEvent.GetKey() == EKeys::I)
+	{
+		UE_LOG(LogTemp, Log, TEXT("InventoryWidget: 'I' key pressed."));
+		if (OwnerInventory) 
+		{
+			UE_LOG(LogTemp, Log, TEXT("InventoryWidget: Calling OwnerInventory->ToggleInventory()."));
+			OwnerInventory->ToggleInventory();
+			return FReply::Handled(); // We handled the key press
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("InventoryWidget: OwnerInventory is null, cannot toggle."));
+		}
+	}
+
 	// Check for Tab key to switch tabs (Simple example: cycle forward)
-	if (InKeyEvent.GetKey() == EKeys::Tab)
+	else if (InKeyEvent.GetKey() == EKeys::Tab)
 	{
 		if (TabWidgetSwitcher)
 		{
@@ -115,6 +132,7 @@ FReply UInventoryWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKey
 		}
 	}
 	// Check for Escape key to close the inventory
+	/* // Remove Escape key functionality for closing inventory
 	else if (InKeyEvent.GetKey() == EKeys::Escape)
 	{
 		RemoveFromParent(); // Close this widget
@@ -129,6 +147,7 @@ FReply UInventoryWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKey
 		}
 		return FReply::Handled();
 	}
+	*/
 
 	// If not handled, pass to base class or return Unhandled
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
@@ -248,9 +267,8 @@ void UInventoryWidget::UpdateItemsInInventoryUI(const TArray<FSlotStruct>& AllIt
 	// Update the Item Info display (if bound and valid)
 	if (WBP_ItemInfo)
 	{
-		// Typically, you would clear the Item Info or set it based on the first 
-		// item, or perhaps only update it when a slot is clicked.
-		// Clearing it here for now:
-		WBP_ItemInfo->SetItemAndUpdate(FSlotStruct()); // Pass an empty struct to clear it
+		// Ensure ItemInfoWidget is hidden after updating the inventory UI
+		WBP_ItemInfo->SetVisibility(ESlateVisibility::Hidden);
+		UE_LOG(LogTemp, Log, TEXT("InventoryWidget: Explicitly hid ItemInfoWidget after UI update."));
 	}
 } 

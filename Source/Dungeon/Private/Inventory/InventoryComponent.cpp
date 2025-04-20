@@ -13,6 +13,10 @@
 #include "Kismet/GameplayStatics.h" // For GetPlayerController
 #include "Kismet/KismetSystemLibrary.h" // For SphereTraceSingle
 #include "DrawDebugHelpers.h" // For DrawDebugSphere (optional)
+#include "Camera/CameraComponent.h" // Needed for camera-based trace
+#include "Characters/WarriorHeroCharacter.h" // Needed to get camera component or owner cast
+#include "Inventory/InventoryWidget.h" // Needed for casting InventoryWidgetInstance
+#include "Inventory/ItemInfoWidget.h" // Needed for getting/using ItemInfoWidget
 // #include "Camera/CameraComponent.h" // No longer needed
 
 // Include necessary headers for casting
@@ -154,6 +158,18 @@ void UInventoryComponent::ToggleInventory()
 
 		InventoryWidgetInstance->AddToViewport();
 		UE_LOG(LogTemp, Log, TEXT("Called AddToViewport. IsInViewport: %s"), InventoryWidgetInstance->IsInViewport() ? TEXT("True") : TEXT("False"));
+
+		// Explicitly hide the ItemInfoWidget when opening the inventory
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
+		if (InventoryWidget)
+		{
+			UItemInfoWidget* ItemInfo = InventoryWidget->GetItemInfoWidget(); 
+			if (ItemInfo)
+			{
+				ItemInfo->SetVisibility(ESlateVisibility::Hidden);
+				UE_LOG(LogTemp, Log, TEXT("InventoryComponent: Explicitly hid ItemInfoWidget on inventory open."));
+			}
+		}
 
 		FInputModeUIOnly InputModeData;
 		TSharedPtr<SWidget> WidgetToFocus = InventoryWidgetInstance->TakeWidget();
