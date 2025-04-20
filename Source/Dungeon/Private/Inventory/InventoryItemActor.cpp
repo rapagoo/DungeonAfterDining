@@ -140,10 +140,14 @@ void AInventoryItemActor::UpdateMeshFromData()
         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: GetBodySetup result: %s"), *GetNameSafe(this), BodySetup ? TEXT("Valid") : TEXT("NULL")); // Log BodySetup validity
         if (BodySetup)
         {
-            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex; // Use simple collision for physics
-            ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Ensure physics profile
-            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled for physics
-            ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // Also ensure it blocks Visibility traces here
+            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex;
+            // Use the new custom profile defined in Project Settings
+            ProceduralMeshComponent->SetCollisionProfileName(FName("DroppedItem")); // Use the new profile name
+            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            // REMOVED: Channel responses are now handled by the "DroppedItem" profile
+            // ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); 
+
+            // Log applied settings (Profile should now show "DroppedItem")
             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Applied collision settings (Profile: %s, Enabled: %s)"), 
                 *GetNameSafe(this), 
                 *ProceduralMeshComponent->GetCollisionProfileName().ToString(), 
