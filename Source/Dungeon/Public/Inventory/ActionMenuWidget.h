@@ -45,6 +45,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UImage* CancelButtonHoverImage;
 
+	// --- Button for placing item --- 
+	UPROPERTY(meta = (BindWidget))
+	UButton* PlaceButton;
+
 	// --- Data --- 
 
 	// The item slot this menu is acting upon
@@ -72,6 +76,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Action Menu Config")
 	TSubclassOf<AInventoryItemActor> ItemActorClass;
 
+	// The class of the item actor to spawn when placing on a table (needs Procedural Mesh)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Action Menu Config")
+	TSubclassOf<AInventoryItemActor> PlaceableItemActorClass;
+
 protected:
 	// Called when the widget is constructed (after properties are initialized)
 	virtual void NativeConstruct() override;
@@ -89,6 +97,9 @@ protected:
 
 	UFUNCTION()
 	void OnCancelButtonClicked();
+
+	UFUNCTION()
+	void OnPlaceButtonClicked();
 
 	// --- Hover Callbacks --- 
 

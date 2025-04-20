@@ -5,12 +5,18 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/DataTable.h"         // For UDataTable
+//#include "Components/ProceduralMeshComponent.h" // Reverting back to standard include path
+#include "ProceduralMeshComponent.h"
 #include "Inventory/SlotStruct.h" // Include FSlotStruct definition
+#include "Inventory/InvenItemStruct.h" // Include the actual DataTable Row Struct definition
 #include "InventoryItemActor.generated.h"
 
 // Forward declarations
-class UStaticMeshComponent;
+// class UStaticMeshComponent; // Replaced
+// class UProceduralMeshComponent; // Removed forward declaration
 class UDataTable;
+// class UItemDataStruct; // Removed incorrect forward declaration
+struct FInventoryItemStruct; // Forward declare the struct type
 
 UCLASS()
 class DUNGEON_API AInventoryItemActor : public AActor
@@ -28,9 +34,10 @@ protected:
 	// Called when an instance of this class is placed or updated in the editor
 	virtual void OnConstruction(const FTransform& Transform) override;
 
-	// The Static Mesh Component to display the item's mesh
+	// The Procedural Mesh Component to display and slice the item's mesh
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* StaticMeshComponent;
+	// UStaticMeshComponent* StaticMeshComponent; // Replaced
+	UProceduralMeshComponent* ProceduralMeshComponent; // Changed type
 
 	// The inventory slot data for this item
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory", meta = (ExposeOnSpawn = true))
@@ -40,8 +47,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
 	TSoftObjectPtr<UDataTable> InventoryDataTable; 
 
-	// Updates the static mesh component based on the Item data
-	virtual void UpdateStaticMesh();
+	// Pointer to the ItemData struct, looked up from ItemID. Not a UPROPERTY.
+	FInventoryItemStruct* ItemData; // Removed UPROPERTY and const
+
+	// Updates the procedural mesh component based on the Item data
+	void UpdateMeshFromData();
 
 public:	
 	// Called every frame
@@ -54,5 +64,9 @@ public:
 	// Allows external objects to set the item data for this actor and update visuals
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void SetItemData(const FSlotStruct& NewItem);
+
+	// Event called after ItemData has been set and mesh updated
+	UFUNCTION(BlueprintImplementableEvent, Category = "Inventory")
+	void OnItemDataUpdated();
 
 };

@@ -90,6 +90,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void UpdateInventoryUI();
 
+	// Removes a specified quantity of an item from a given slot index.
+	// Returns true if the operation was successful (item found and quantity sufficient).
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool RemoveItemFromSlot(int32 SlotIndex, int32 QuantityToRemove = 1);
+
 	/** Returns the created inventory widget instance (may be null) */
 	UFUNCTION(BlueprintPure, Category = "UI")
 	UUserWidget* GetInventoryWidgetInstance() const { return InventoryWidgetInstance; }
