@@ -14,6 +14,8 @@ class USceneCaptureComponent2D;
 struct FInputActionValue;
 class UHeroCombatComponent;
 class UHeroUIComponent;
+class UInventoryComponent;
+
 /**
  * 
  */
@@ -41,6 +43,10 @@ protected:
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void BeginPlay() override;
+
+	// Inventory Component
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UInventoryComponent* InventoryComponent;
 
 private:
 
@@ -83,4 +89,7 @@ private:
 
 public:
 	FORCEINLINE UHeroCombatComponent* GetHeroCombatComponent() const { return HeroCombatComponent; }
+
+	// Return Inventory Component
+	UInventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
 };

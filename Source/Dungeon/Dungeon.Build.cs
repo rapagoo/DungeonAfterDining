@@ -20,9 +20,13 @@ public class Dungeon : ModuleRules
             "AnimGraphRuntime",
             "MotionWarping",
             "Niagara",
-            "NavigationSystem"});
+            "NavigationSystem",
+            "UMG",
+            "Slate",
+            "SlateCore",
+		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		PrivateDependencyModuleNames.AddRange(new string[] { "ProceduralMeshComponent" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
