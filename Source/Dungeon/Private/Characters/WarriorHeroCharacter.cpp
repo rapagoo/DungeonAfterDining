@@ -18,6 +18,11 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Inventory/InventoryComponent.h"
 #include "EnhancedInputComponent.h"
+#include "Components/SphereComponent.h"
+#include "Interactables/InteractableTable.h"
+#include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
+#include "Camera/CameraActor.h"
 
 #include "WarriorDebugHelper.h"
 
@@ -58,6 +63,20 @@ AWarriorHeroCharacter::AWarriorHeroCharacter()
 	// Temporarily disabled Inventory Component creation
 	// InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
+
+	// Interaction Sphere for detecting interactable objects
+	InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
+	InteractionSphere->SetupAttachment(GetRootComponent());
+	InteractionSphere->SetSphereRadius(150.0f); // Adjust radius as needed
+	// Set the collision profile created in Project Settings for querying interactables
+	InteractionSphere->SetCollisionProfileName(FName("InteractionQuery")); // Use the profile name from settings
+	InteractionSphere->SetGenerateOverlapEvents(true);
+    // Ensure it doesn't physically collide with anything by default
+    InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+    // Explicitly overlap with the custom Interactable channel (assuming it's setup in the profile)
+    // If the profile handles this, these lines might be redundant but safe
+    // InteractionSphere->SetCollisionResponseToChannel(ECC_GameTraceChannelX, ECR_Overlap); // Replace X with your Interactable channel index if needed
 }
 
 UPawnCombatComponent* AWarriorHeroCharacter::GetPawnCombatComponent() const
@@ -92,12 +111,9 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// Cast to Enhanced Input Component is crucial
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// Temporarily disabled Inventory Component input binding
-		/*
-		// Bind inventory actions if the component is valid
+        // Bind Inventory actions first
 		if (InventoryComponent)
 		{
 			InventoryComponent->SetupInputBinding(EnhancedInputComponent);
@@ -107,42 +123,62 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		{
 			UE_LOG(LogTemp, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
 		}
-		*/
-		// Bind inventory actions if the component is valid
-		if (InventoryComponent)
-		{
-			InventoryComponent->SetupInputBinding(EnhancedInputComponent);
-			UE_LOG(LogTemp, Log, TEXT("InventoryComponent input binding setup called for %s"), *GetName());
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
-		}
+
+        // Existing Input Config setup
+        checkf(InputConfigDataAsset, TEXT("Forgot to assign a valid data asset as input config"))
+        ULocalPlayer* LocalPlayer = GetController<APlayerController>()->GetLocalPlayer();
+        UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
+        check(Subsystem);
+        Subsystem->AddMappingContext(InputConfigDataAsset->DefaultMappingContext, 0);
+
+        UWarriorInputComponent* WarriorInputComponent = CastChecked<UWarriorInputComponent>(PlayerInputComponent);
+
+        // Bind Movement and Look
+        WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move);
+        WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_Look, ETriggerEvent::Triggered, this, &ThisClass::Input_Look);
+
+        // Bind Target Switching
+        WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_SwitchTarget, ETriggerEvent::Triggered, this, &ThisClass::Input_SwitchTargetTriggered);
+        WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_SwitchTarget, ETriggerEvent::Completed, this, &ThisClass::Input_SwitchTargetCompleted);
+
+        // Bind Gameplay Ability Actions
+        WarriorInputComponent->BindAbilityInputAction(InputConfigDataAsset, this, &ThisClass::Input_AbilityInputPressed, &ThisClass::Input_AbilityInputReleased);
+
+        // Bind Cooking Mode Toggle Action (Using C key, mapped to InputTag_Interact)
+        const FGameplayTag InteractInputTag = WarriorGameplayTags::InputTag_Interact;
+        if (InteractInputTag.IsValid() && InputConfigDataAsset) // InputConfigDataAsset null check added
+        {
+            UInputAction* InteractAction = nullptr; // Pointer to store the found action
+            // Iterate through the AbilityInputActions array in the data asset
+            for (const FWarriorInputActionConfig& ActionConfig : InputConfigDataAsset->AbilityInputActions)
+            {
+                if (ActionConfig.InputAction && ActionConfig.InputTag == InteractInputTag)
+                {
+                    InteractAction = ActionConfig.InputAction;
+                    break; // Stop searching once found
+                }
+            }
+
+            if (InteractAction) // Check if the action was found
+            {
+                EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &AWarriorHeroCharacter::Input_ToggleCookingModePressed);
+                UE_LOG(LogTemp, Log, TEXT("Bound InputTag_Interact to Input_ToggleCookingModePressed"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Input Action for InputTag_Interact not found in InputConfigDataAsset. Cooking mode toggle not bound."));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("InputTag_Interact GameplayTag is invalid or InputConfigDataAsset is null. Cooking mode toggle not bound."));
+        }
+
 	}
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("Failed to cast PlayerInputComponent to UEnhancedInputComponent on %s"), *GetName());
 	}
-
-	checkf(InputConfigDataAsset, TEXT("Forgot to assign a valid data asset as input config"))
-
-	ULocalPlayer* LocalPlayer = GetController<APlayerController>()->GetLocalPlayer();
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
-
-	check(Subsystem);
-
-	Subsystem->AddMappingContext(InputConfigDataAsset->DefaultMappingContext, 0);
-
-	UWarriorInputComponent* WarriorInputComponent = CastChecked<UWarriorInputComponent>(PlayerInputComponent);
-
-	WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_Move, ETriggerEvent::Triggered, this, &ThisClass::Input_Move);
-	WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_Look, ETriggerEvent::Triggered, this, &ThisClass::Input_Look);
-
-	WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_SwitchTarget, ETriggerEvent::Triggered, this, &ThisClass::Input_SwitchTargetTriggered);
-	WarriorInputComponent->BindNativeInputAction(InputConfigDataAsset, WarriorGameplayTags::InputTag_SwitchTarget, ETriggerEvent::Completed, this, &ThisClass::Input_SwitchTargetCompleted);
-
-	WarriorInputComponent->BindAbilityInputAction(InputConfigDataAsset, this, &ThisClass::Input_AbilityInputPressed, &ThisClass::Input_AbilityInputReleased);
 }
 
 void AWarriorHeroCharacter::BeginPlay()
@@ -161,6 +197,18 @@ void AWarriorHeroCharacter::BeginPlay()
 		// 추가 설정
 		SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_SceneColorHDR;
 	}
+
+    // Bind overlap events for the interaction sphere
+    if (InteractionSphere)
+    {
+        InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereBeginOverlap);
+        InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereEndOverlap);
+        UE_LOG(LogTemp, Log, TEXT("InteractionSphere overlap events bound."));
+    }
+    else
+    {
+         UE_LOG(LogTemp, Warning, TEXT("InteractionSphere is null in BeginPlay, overlap events not bound."));
+    }
 }
 
 void AWarriorHeroCharacter::Input_Move(const FInputActionValue& InputActionValue)
@@ -223,4 +271,78 @@ void AWarriorHeroCharacter::Input_AbilityInputPressed(FGameplayTag InInputTag)
 void AWarriorHeroCharacter::Input_AbilityInputReleased(FGameplayTag InInputTag)
 {
 	WarriorAbilitySystemComponent->OnAbilityInputReleased(InInputTag);
+}
+
+void AWarriorHeroCharacter::OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+    AInteractableTable* Table = Cast<AInteractableTable>(OtherActor);
+    if (Table && !CurrentInteractableTable) // Check if it's a table and we aren't already focused on one
+    {
+        CurrentInteractableTable = Table;
+        // TODO: Show UI Prompt (e.g., "Press C to Cook")
+        UE_LOG(LogTemp, Log, TEXT("Interactable table in range: %s"), *Table->GetName());
+    }
+}
+
+void AWarriorHeroCharacter::OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+    AInteractableTable* Table = Cast<AInteractableTable>(OtherActor);
+    if (Table && Table == CurrentInteractableTable) // Check if the exiting actor is our current target
+    {
+        CurrentInteractableTable = nullptr;
+        // TODO: Hide UI Prompt
+        UE_LOG(LogTemp, Log, TEXT("Interactable table out of range: %s"), *Table->GetName());
+    }
+}
+
+void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
+{
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (!PlayerController) return;
+
+    if (bIsInCookingMode)
+    {
+        // Exit Cooking Mode
+        UE_LOG(LogTemp, Log, TEXT("Exiting Cooking Mode..."));
+        PlayerController->SetViewTargetWithBlend(this, 0.5f); // Blend back to self
+        
+        // Restore game input mode
+        FInputModeGameOnly InputModeData;
+        PlayerController->SetInputMode(InputModeData);
+        PlayerController->SetShowMouseCursor(false); // Hide cursor
+
+        bIsInCookingMode = false;
+    }
+    else
+    {   
+        // Attempt to Enter Cooking Mode
+        if (CurrentInteractableTable) 
+        {
+            ACameraActor* CookingCamera = CurrentInteractableTable->GetCookingCamera();
+            if (CookingCamera)
+            {
+                UE_LOG(LogTemp, Log, TEXT("Entering Cooking Mode... Target Table: %s, Camera: %s"), *CurrentInteractableTable->GetName(), *CookingCamera->GetName());
+                PlayerController->SetViewTargetWithBlend(CookingCamera, 0.5f); // Blend to table camera
+
+                // Set input mode for cooking (needs mouse interaction)
+                FInputModeGameAndUI InputModeData;
+                // Optionally set a widget to focus if needed, otherwise focuses viewport
+                // InputModeData.SetWidgetToFocus(nullptr); 
+                InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); // Allow mouse to move freely
+                PlayerController->SetInputMode(InputModeData);
+                PlayerController->SetShowMouseCursor(true); // Show cursor for interaction
+
+                bIsInCookingMode = true;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Cannot enter cooking mode: Table '%s' has no CookingCamera assigned."), *CurrentInteractableTable->GetName());
+            }
+        }
+        else
+        {
+            // Optionally provide feedback if no table is in range
+            UE_LOG(LogTemp, Log, TEXT("ToggleCookingMode pressed, but no interactable table in range."));
+        }
+    }
 }

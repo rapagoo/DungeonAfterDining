@@ -11,6 +11,8 @@ class USpringArmComponent;
 class UCameraComponent;
 class UDataAsset_InputConfig;
 class USceneCaptureComponent2D;
+class USphereComponent;
+class AInteractableTable;
 struct FInputActionValue;
 class UHeroCombatComponent;
 class UHeroUIComponent;
@@ -47,6 +49,28 @@ protected:
 	// Inventory Component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UInventoryComponent* InventoryComponent;
+
+	// Interaction Sphere Component
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
+	USphereComponent* InteractionSphere;
+
+	// Currently overlapping interactable table
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
+	AInteractableTable* CurrentInteractableTable;
+
+	// State flag for cooking mode
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "State", meta = (AllowPrivateAccess = "true"))
+	bool bIsInCookingMode = false;
+
+	// Interaction Sphere Overlap Handlers
+	UFUNCTION()
+	void OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+	// Input handler for toggling cooking mode (bound to C key)
+	void Input_ToggleCookingModePressed();
 
 private:
 
