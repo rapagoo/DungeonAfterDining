@@ -23,6 +23,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
+#include "Inventory/InventoryItemActor.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "DrawDebugHelpers.h"
 
 #include "WarriorDebugHelper.h"
 
@@ -174,6 +177,18 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
             UE_LOG(LogTemp, Warning, TEXT("InputTag_Interact GameplayTag is invalid or InputConfigDataAsset is null. Cooking mode toggle not bound."));
         }
 
+        // Bind Slicing Action (ensure SliceAction is set in Character Blueprint defaults)
+        if (SliceAction)
+        {
+            EnhancedInputComponent->BindAction(SliceAction, ETriggerEvent::Started, this, &AWarriorHeroCharacter::Input_SliceStart); // Use Started for press
+            EnhancedInputComponent->BindAction(SliceAction, ETriggerEvent::Completed, this, &AWarriorHeroCharacter::Input_SliceEnd); // Use Completed for release
+            EnhancedInputComponent->BindAction(SliceAction, ETriggerEvent::Canceled, this, &AWarriorHeroCharacter::Input_SliceEnd); // Also handle cancellation
+             UE_LOG(LogTemp, Log, TEXT("Bound SliceAction to Input_SliceStart/End"));
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("SliceAction is not set in Character Defaults. Slicing input not bound."));
+        }
 	}
 	else
 	{
@@ -300,10 +315,21 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     if (!PlayerController) return;
 
+    ULocalPlayer* LocalPlayer = PlayerController->GetLocalPlayer();
+    if (!LocalPlayer) return;
+
+    UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
+    if (!Subsystem) return;
+
     if (bIsInCookingMode)
     {
         // Exit Cooking Mode
         UE_LOG(LogTemp, Log, TEXT("Exiting Cooking Mode..."));
+        // Remove Cooking Input Mapping Context if it's valid
+        if (CookingMappingContext)
+        {
+            Subsystem->RemoveMappingContext(CookingMappingContext);
+        }
         PlayerController->SetViewTargetWithBlend(this, 0.5f); // Blend back to self
         
         // Restore game input mode
@@ -312,6 +338,7 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
         PlayerController->SetShowMouseCursor(false); // Hide cursor
 
         bIsInCookingMode = false;
+        bIsDraggingSlice = false; // Reset dragging state
     }
     else
     {   
@@ -322,13 +349,22 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
             if (CookingCamera)
             {
                 UE_LOG(LogTemp, Log, TEXT("Entering Cooking Mode... Target Table: %s, Camera: %s"), *CurrentInteractableTable->GetName(), *CookingCamera->GetName());
+                // Add Cooking Input Mapping Context if it's valid
+                if (CookingMappingContext)
+                {
+                     Subsystem->AddMappingContext(CookingMappingContext, 1); // Priority 1
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("CookingMappingContext is not set in Character Defaults. Cooking input might not work."));
+                }
+                
                 PlayerController->SetViewTargetWithBlend(CookingCamera, 0.5f); // Blend to table camera
 
                 // Set input mode for cooking (needs mouse interaction)
                 FInputModeGameAndUI InputModeData;
-                // Optionally set a widget to focus if needed, otherwise focuses viewport
-                // InputModeData.SetWidgetToFocus(nullptr); 
-                InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); // Allow mouse to move freely
+                InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
+                InputModeData.SetHideCursorDuringCapture(false); // Ensure cursor stays visible while dragging
                 PlayerController->SetInputMode(InputModeData);
                 PlayerController->SetShowMouseCursor(true); // Show cursor for interaction
 
@@ -341,8 +377,218 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
         }
         else
         {
-            // Optionally provide feedback if no table is in range
             UE_LOG(LogTemp, Log, TEXT("ToggleCookingMode pressed, but no interactable table in range."));
         }
     }
+}
+
+void AWarriorHeroCharacter::Input_SliceStart()
+{
+    UE_LOG(LogTemp, Log, TEXT("Input_SliceStart triggered."));
+    if (!bIsInCookingMode || !CurrentInteractableTable) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Input_SliceStart aborted: Not in cooking mode (%d) or no table (%d)."), bIsInCookingMode, CurrentInteractableTable != nullptr);
+        return;
+    }
+
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (!PlayerController) 
+    {
+         UE_LOG(LogTemp, Warning, TEXT("Input_SliceStart aborted: No PlayerController."));
+         return;
+    }
+
+    // Get current mouse position
+    if (PlayerController->GetMousePosition(SliceStartScreenPosition.X, SliceStartScreenPosition.Y))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Slice Start - Screen Pos: %s"), *SliceStartScreenPosition.ToString());
+
+        // Use GetHitResultUnderCursor to find the object directly under the mouse
+        FHitResult HitResult;
+        bool bHit = PlayerController->GetHitResultUnderCursorByChannel(
+            UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_GameTraceChannel1), // Use InteractionQuery Channel
+            true, // bTraceComplex
+            HitResult
+        );
+
+        // Draw debug point for where the cursor trace hit (or where it would have been)
+        // We might need WorldOrigin/Direction if trace fails, but let's get it anyway for debug
+        FVector WorldOrigin, WorldDirection;
+        UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceStartScreenPosition, WorldOrigin, WorldDirection);
+        DrawDebugSphere(GetWorld(), WorldOrigin + WorldDirection * HitResult.Distance, 5.0f, 12, FColor::Yellow, false, 30.0f); // Draw where the hit occured along the old ray
+
+        // Reset candidate initially
+        SlicedItemCandidate = nullptr;
+        bIsDraggingSlice = false; 
+
+        if (bHit && HitResult.GetActor())
+        {   
+            // Check if the hit actor is an inventory item
+            AInventoryItemActor* HitItemActor = Cast<AInventoryItemActor>(HitResult.GetActor());
+            if (HitItemActor)
+            {
+                SliceStartWorldLocation = HitResult.Location; // Use the actual hit location
+                SlicedItemCandidate = HitItemActor; // Store the candidate item
+                UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit INVENTORY ITEM: %s at %s. Storing as candidate. Setting bIsDraggingSlice = true."), 
+                    *SlicedItemCandidate->GetName(),
+                    *SliceStartWorldLocation.ToString()
+                );
+                 bIsDraggingSlice = true;
+                 DrawDebugSphere(GetWorld(), SliceStartWorldLocation, 5.0f, 12, FColor::Cyan, false, 30.0f);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit actor '%s', but it's not an InventoryItemActor."), *HitResult.GetActor()->GetName());
+                SliceStartWorldLocation = FVector::ZeroVector; // Still reset location if not an item
+            }
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("Slice Start - Cursor trace did not hit anything."));
+             SliceStartWorldLocation = FVector::ZeroVector; // Ensure reset
+        }
+        
+        // Ensure drag state is false if we didn't hit a valid item
+        if (!SlicedItemCandidate)
+        {
+            bIsDraggingSlice = false;
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Slice Start - Failed to get mouse position. bIsDraggingSlice remains false."));
+         bIsDraggingSlice = false; // Explicitly ensure it's false
+    }
+}
+
+void AWarriorHeroCharacter::Input_SliceEnd()
+{
+    UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd triggered. Current bIsDraggingSlice = %d"), bIsDraggingSlice);
+    if (!bIsInCookingMode || !bIsDraggingSlice || !CurrentInteractableTable) 
+    {
+         UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted early: CookingMode=%d, IsDragging=%d, Table=%d"), bIsInCookingMode, bIsDraggingSlice, CurrentInteractableTable != nullptr);
+         // Reset slice state even if aborted early
+         bIsDraggingSlice = false;
+         SliceStartWorldLocation = FVector::ZeroVector;
+         SliceEndWorldLocation = FVector::ZeroVector;
+         return; 
+    }
+
+    APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    if (!PlayerController) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted: No PlayerController."));
+        bIsDraggingSlice = false; // Ensure reset
+        SliceStartWorldLocation = FVector::ZeroVector; 
+        return;
+    }
+
+    FVector2D SliceEndScreenPosition;
+    if (PlayerController->GetMousePosition(SliceEndScreenPosition.X, SliceEndScreenPosition.Y))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Slice End - Screen Pos: %s"), *SliceEndScreenPosition.ToString());
+
+        // --- Check Screen Distance First ---
+        const float ScreenDistance = FVector2D::Distance(SliceStartScreenPosition, SliceEndScreenPosition);
+        const float ScreenDistanceThreshold = 10.0f; // Minimum pixel distance for a slice
+        UE_LOG(LogTemp, Log, TEXT("Calculated Screen Distance: %.2f (Threshold: %.1f)"), ScreenDistance, ScreenDistanceThreshold);
+
+        if (ScreenDistance < ScreenDistanceThreshold)
+        {
+            UE_LOG(LogTemp, Log, TEXT("Slice canceled - screen drag distance too short."));
+        }
+        else
+        {   
+            // Screen distance is sufficient, get world end location via GetHitResultUnderCursor
+            FHitResult EndHitResult;
+            bool bEndHit = PlayerController->GetHitResultUnderCursorByChannel(
+                UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_GameTraceChannel1),
+                true, // bTraceComplex
+                EndHitResult
+            );
+            
+            // Draw debug point for where the end cursor trace hit
+            FVector EndWorldOrigin, EndWorldDirection; // Need temp vars for debug draw
+            UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceEndScreenPosition, EndWorldOrigin, EndWorldDirection);
+            DrawDebugSphere(GetWorld(), EndWorldOrigin + EndWorldDirection * EndHitResult.Distance, 5.0f, 12, FColor::Orange, false, 30.0f);
+
+            AInventoryItemActor* EndHitItemActor = nullptr;
+            if (bEndHit && EndHitResult.GetActor())
+            {
+                SliceEndWorldLocation = EndHitResult.Location;
+                EndHitItemActor = Cast<AInventoryItemActor>(EndHitResult.GetActor()); // Try casting end hit actor
+                // ... Log End Cursor trace hit ...
+                // ... Draw Debug Sphere (Magenta) ...
+            }
+            else
+            {
+                 UE_LOG(LogTemp, Warning, TEXT("Slice End - Cursor trace for end point did not hit anything or invalid actor."));
+                 SliceEndWorldLocation = FVector::ZeroVector;
+            }
+
+            // --- Perform Slice only if Start and End hit the SAME Inventory Item ---
+            if (SlicedItemCandidate != nullptr && // Was a valid item hit at the start?
+                EndHitItemActor == SlicedItemCandidate && // Did the end hit the SAME item?
+                !SliceStartWorldLocation.IsNearlyZero() && 
+                !SliceEndWorldLocation.IsNearlyZero())
+            {
+                // All conditions met, proceed with slice
+                if (SlicedItemCandidate)
+                {
+                    UE_LOG(LogTemp, Log, TEXT("Start/End points valid and hit the SAME InventoryItem (%s). Performing Slice."), *SlicedItemCandidate->GetName());
+                     // Draw the debug line representing the slice path
+                    DrawDebugLine(GetWorld(), SliceStartWorldLocation, SliceEndWorldLocation, FColor::Yellow, false, 30.0f, 0, 1.0f);
+
+                    // Calculate cutting plane (Moved calculation here)
+                    FVector SliceDirection = (SliceEndWorldLocation - SliceStartWorldLocation).GetSafeNormal();
+                    FVector PlanePosition = (SliceStartWorldLocation + SliceEndWorldLocation) / 2.0f;
+                    FVector PlaneNormal = (SliceDirection ^ FVector::UpVector).GetSafeNormal(); 
+                    if (PlaneNormal.IsNearlyZero()) { PlaneNormal = FVector::ForwardVector; }
+
+                    PerformSlice(SlicedItemCandidate, PlanePosition, PlaneNormal); // Use the stored candidate
+                }
+            }
+            else
+            { 
+                // Log the reason for aborting
+                FString AbortReason = TEXT("Unknown");
+                if (!SlicedItemCandidate) AbortReason = TEXT("No valid item hit at start");
+                else if (EndHitItemActor != SlicedItemCandidate) AbortReason = FString::Printf(TEXT("End hit different actor (%s) or not an item"), EndHitItemActor ? *EndHitItemActor->GetName() : TEXT("None"));
+                else if (SliceStartWorldLocation.IsNearlyZero() || SliceEndWorldLocation.IsNearlyZero()) AbortReason = TEXT("Start or End WorldLocation zero");
+                UE_LOG(LogTemp, Warning, TEXT("Slice aborted - Reason: %s"), *AbortReason);
+            }
+        }
+    }
+    else
+    { UE_LOG(LogTemp, Warning, TEXT("Slice End - Failed to get mouse position.")); }
+
+    // Reset locations and dragging state AFTER the operation attempts
+    UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd finished. Resetting bIsDraggingSlice = false."));
+    bIsDraggingSlice = false; 
+    SliceStartWorldLocation = FVector::ZeroVector; 
+    SliceEndWorldLocation = FVector::ZeroVector;
+
+    // Reset candidate at the very end
+    SlicedItemCandidate = nullptr;
+}
+
+// Placeholder for the actual slicing logic
+void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const FVector& PlanePosition, const FVector& PlaneNormal)
+{
+    if (!ItemToSlice)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PerformSlice called with null ItemToSlice."));
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("PerformSlice called for '%s'. Plane Position: %s, Plane Normal: %s. Calling ItemToSlice->SliceItem()..."), 
+        *ItemToSlice->GetName(), 
+        *PlanePosition.ToString(), 
+        *PlaneNormal.ToString()
+        );
+
+    // Call the item's slicing function
+    ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
+
+    // UE_LOG(LogTemp, Warning, TEXT("Actual mesh slicing logic is not yet implemented in PerformSlice.")); // Removed old warning
 }

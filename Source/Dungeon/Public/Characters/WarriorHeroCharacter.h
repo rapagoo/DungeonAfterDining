@@ -10,6 +10,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UDataAsset_InputConfig;
+class UInputMappingContext;
 class USceneCaptureComponent2D;
 class USphereComponent;
 class AInteractableTable;
@@ -17,6 +18,7 @@ struct FInputActionValue;
 class UHeroCombatComponent;
 class UHeroUIComponent;
 class UInventoryComponent;
+class AInventoryItemActor;
 
 /**
  * 
@@ -72,6 +74,13 @@ protected:
 	// Input handler for toggling cooking mode (bound to C key)
 	void Input_ToggleCookingModePressed();
 
+	// Input handlers for slicing action
+	void Input_SliceStart();
+	void Input_SliceEnd();
+
+	// Performs the actual slice on the item
+	void PerformSlice(AInventoryItemActor* ItemToSlice, const FVector& PlanePosition, const FVector& PlaneNormal);
+
 private:
 
 #pragma region Components
@@ -110,6 +119,24 @@ private:
 	void Input_AbilityInputReleased(FGameplayTag InInputTag);
 
 #pragma endregion
+
+	// Input Mapping Context for cooking mode
+	UPROPERTY(EditDefaultsOnly, Category = "Input | Cooking")
+	UInputMappingContext* CookingMappingContext;
+
+	// Input Action for slicing
+	UPROPERTY(EditDefaultsOnly, Category = "Input | Cooking")
+	class UInputAction* SliceAction;
+
+	// Variables to store slice start/end points
+	FVector SliceStartWorldLocation = FVector::ZeroVector;
+	FVector SliceEndWorldLocation = FVector::ZeroVector;
+	FVector2D SliceStartScreenPosition = FVector2D::ZeroVector;
+	bool bIsDraggingSlice = false;
+
+    // Pointer to the item actor being dragged over at the start of a slice attempt
+    UPROPERTY() // Keep track of the actor reference
+    AInventoryItemActor* SlicedItemCandidate = nullptr;
 
 public:
 	FORCEINLINE UHeroCombatComponent* GetHeroCombatComponent() const { return HeroCombatComponent; }

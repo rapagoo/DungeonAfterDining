@@ -45,6 +45,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Item Properties")
 	TSoftObjectPtr<UStaticMesh> Mesh; // Use Soft Ptr for assets
 
+	// Tooltip: SlicedItemID - The Row Name of the item this becomes after being sliced. None if not sliceable.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item Properties | Cooking")
+	FName SlicedItemID; // 잘렸을 때 변환될 아이템의 Row Name
+
 	// Default constructor
 	FInventoryItemStruct()
 		: ItemType(EInventoryItemType::EIT_Eatables) // Initialize with a valid existing enum value

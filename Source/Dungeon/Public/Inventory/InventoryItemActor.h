@@ -5,18 +5,19 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/DataTable.h"         // For UDataTable
-//#include "Components/ProceduralMeshComponent.h" // Standard path commented out
-#include "ProceduralMeshComponent.h" // Direct path as per user preference
-#include "Components/StaticMeshComponent.h" // Needed for TemporarySourceMeshComponent
+#include "Components/SceneComponent.h" // Include for USceneComponent
+#include "Components/StaticMeshComponent.h" // Needed for StaticMeshComponent
+#include "ProceduralMeshComponent.h" // Use direct include as per standard
 #include "Inventory/SlotStruct.h" // Include FSlotStruct definition
 #include "Inventory/InvenItemStruct.h" // Include the actual DataTable Row Struct definition
 #include "InventoryItemActor.generated.h"
 
 // Forward declarations
-class UDataTable;
-//class UStaticMeshComponent; // Replaced by full include
-//class UProceduralMeshComponent; // Replaced by full include
+// class UDataTable; // Included
+// class UStaticMeshComponent; // Included
+// class UProceduralMeshComponent; // Included
 struct FInventoryItemStruct; // Forward declare the struct type
+class UMaterialInterface;
 
 UCLASS()
 class DUNGEON_API AInventoryItemActor : public AActor
@@ -37,14 +38,25 @@ protected:
 	// Called when an instance of this class is placed or updated in the editor
 	virtual void OnConstruction(const FTransform& Transform) override;
 
-	// The Procedural Mesh Component to display the item's mesh
+	// Default root component
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	USceneComponent* DefaultSceneRoot;
+
+	// Original static mesh for the item before slicing
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* StaticMeshComponent;
+
+	// Procedural mesh used for slicing (becomes one half after slicing)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UProceduralMeshComponent* ProceduralMeshComponent;
 
-	// Temporary Static Mesh Component to act as a source for copying to Procedural Mesh
-	// Not visible or interactable, just holds the mesh data temporarily.
-	UPROPERTY(Transient) // Don't save this temporary component
-	UStaticMeshComponent* TemporarySourceMeshComponent;
+	// Procedural mesh for the other half created after slicing. Initially null.
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UProceduralMeshComponent> OtherHalfProceduralMeshComponent; // Use TObjectPtr for safety
+
+	// REMOVED: Temporary Static Mesh Component (Now using StaticMeshComponent directly as source)
+	// UPROPERTY(Transient) 
+	// UStaticMeshComponent* TemporarySourceMeshComponent;
 
 	// The inventory slot data for this item
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Inventory", meta = (ExposeOnSpawn = true))
@@ -55,7 +67,15 @@ protected:
 	TSoftObjectPtr<UDataTable> InventoryDataTable;
 
 	// Pointer to the ItemData struct, looked up from ItemID. Not a UPROPERTY.
-	FInventoryItemStruct* ItemData; // Removed const, needs to be non-const if modified by lookup? Check cpp.
+	FInventoryItemStruct* ItemData;
+
+	// Material to use for the cut surface
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Slicing", meta = (AllowPrivateAccess = "true"))
+	UMaterialInterface* CapMaterial;
+
+	// Flag to indicate if the item has been sliced into a procedural mesh
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Slicing", meta = (AllowPrivateAccess = "true"))
+	bool bIsSliced = false;
 
 	// Updates the procedural mesh component based on the Item data
 	void UpdateMeshFromData();
@@ -79,11 +99,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void SetItemData(const FSlotStruct& NewItem);
 
-	// Allows setting the static mesh (primarily for internal use or specific cases)
-	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void SetStaticMesh(UStaticMesh* NewStaticMesh);
-
 	// Function to request physics enable on next tick
 	void RequestEnablePhysics();
+
+	// Function called to slice this item
+	UFUNCTION(BlueprintCallable, Category = "Slicing")
+	virtual void SliceItem(const FVector& PlanePosition, const FVector& PlaneNormal);
+
+	// Called when properties are changed in the editor AFTER construction
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
 };

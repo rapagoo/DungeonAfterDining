@@ -1,14 +1,14 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Inventory/InventoryItemActor.h"
-//#include "Components/StaticMeshComponent.h" // Now included in header
-//#include "Components/ProceduralMeshComponent.h" // Standard path commented out
-#include "ProceduralMeshComponent.h" // Direct path as per user preference
-#include "KismetProceduralMeshLibrary.h" // Needed for CopyProceduralMeshFromStaticMeshComponent
-//#include "Components/PrimitiveComponent.h" // Removed, not needed for BodySetup approach
+#include "Components/StaticMeshComponent.h"
+#include "Inventory/InvenItemStruct.h" // Corrected include path
+// #include "DataAssets/Inventory/DataAsset_ItemLookup.h" // Removed include, file not found
+#include "Kismet/GameplayStatics.h"
+#include "ProceduralMeshComponent.h" // Include for Procedural Mesh
+#include "KismetProceduralMeshLibrary.h" // Include for mesh conversion
 #include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
-#include "Inventory/InvenItemStruct.h" // For FInventoryItemStruct (Data Table Row Type)
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
 #include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
 #include "PhysicsEngine/BodySetup.h" // Correct path for UBodySetup
@@ -16,22 +16,29 @@
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
 {
- 	// Set this actor to call Tick() every frame.
-	PrimaryActorTick.bCanEverTick = true; // Enable Tick
+ 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	PrimaryActorTick.bCanEverTick = false; // Optimize: Disable tick if not needed
 
-	// Create the Procedural Mesh Component and set as root
-	ProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMeshComponent"));
-	RootComponent = ProceduralMeshComponent;
-    // Set a default blocking profile initially to prevent falling through floor on spawn
-	ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::BlockAllDynamic_ProfileName);
-	ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	ProceduralMeshComponent->SetSimulatePhysics(false); // Start with physics off
+	DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
+	RootComponent = DefaultSceneRoot;
 
-	// Create the temporary source Static Mesh Component
-	TemporarySourceMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TemporarySourceMeshComponent"));
-	TemporarySourceMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // No collision needed
-	TemporarySourceMeshComponent->SetVisibility(false); // Not visible
-	TemporarySourceMeshComponent->SetupAttachment(RootComponent); // Attach to root, although not strictly necessary if only used for data
+	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
+	StaticMeshComponent->SetupAttachment(RootComponent);
+    // Ensure the static mesh also uses complex collision for accurate slicing start/end points if needed
+    // StaticMeshComponent->bUseComplexAsSimpleCollision = true; // Consider implications
+
+	// Create the Procedural Mesh Component
+    ProceduralMeshComponent = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMeshComponent"));
+    ProceduralMeshComponent->SetupAttachment(RootComponent);
+    ProceduralMeshComponent->bUseComplexAsSimpleCollision = true; // Important for accurate slicing/collision
+    ProceduralMeshComponent->SetVisibility(false); // Initially hidden
+    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // Initially no collision
+
+    // Default CapMaterial might be null, can be set in Blueprint Defaults
+    CapMaterial = nullptr; 
+
+    // Default state is not sliced
+    bIsSliced = false;
 
     if (ItemData) {
         UpdateMeshFromData();
@@ -42,6 +49,9 @@ AInventoryItemActor::AInventoryItemActor()
 void AInventoryItemActor::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// Removed ItemData lookup logic, assuming it's handled elsewhere or defaults are set
+	// UpdateMesh(); // If UpdateMesh relies on ItemData, call it after lookup
 
     // Ensure mesh is updated if it wasn't in PostActorCreated
     if (!ItemData && !Item.ItemID.RowName.IsNone()) {
@@ -78,9 +88,9 @@ void AInventoryItemActor::OnConstruction(const FTransform& Transform)
 // Renamed from UpdateStaticMesh, uses TemporarySourceMeshComponent now
 void AInventoryItemActor::UpdateMeshFromData()
 {
-	if (!ProceduralMeshComponent || !TemporarySourceMeshComponent)
+	if (!ProceduralMeshComponent || !StaticMeshComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: ProceduralMeshComponent or TemporarySourceMeshComponent is missing!"), *GetNameSafe(this));
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: UpdateMeshFromData: ProceduralMeshComponent or StaticMeshComponent is missing!"), *GetNameSafe(this));
         return;
     }
 
@@ -111,17 +121,17 @@ void AInventoryItemActor::UpdateMeshFromData()
     }
 
     // Set the loaded mesh (or nullptr) on the temporary source component
-    TemporarySourceMeshComponent->SetStaticMesh(MeshToSet);
+    StaticMeshComponent->SetStaticMesh(MeshToSet);
 
     // Copy from the temporary source component to the procedural mesh component
     if (MeshToSet) // Only copy if we successfully loaded a mesh
     {
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Copying mesh from TemporarySourceMeshComponent ('%s') to ProceduralMeshComponent."),
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Copying mesh from StaticMeshComponent ('%s') to ProceduralMeshComponent."),
                  *GetNameSafe(this),
                  *MeshToSet->GetName());
 
         UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(
-            TemporarySourceMeshComponent,
+            StaticMeshComponent,
             0,                            // LODIndex
             ProceduralMeshComponent,      // Target ProcMeshComponent
             true                          // Create collision
@@ -163,9 +173,177 @@ void AInventoryItemActor::UpdateMeshFromData()
     }
 }
 
+// Slices the item mesh
+void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector& PlaneNormal)
+{
+    // --- Prevent slicing if already sliced ---
+    if (bIsSliced || OtherHalfProceduralMeshComponent != nullptr)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: SliceItem called, but item is already sliced. Ignoring."), *GetNameSafe(this));
+        return;
+    }
+
+    if (!ProceduralMeshComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("SliceItem failed: ProceduralMeshComponent is null on %s."), *GetName());
+        return;
+    }
+
+    // --- Hide StaticMeshComponent if it exists and PMC is being used ---
+    if (StaticMeshComponent && ProceduralMeshComponent->GetNumSections() > 0)
+    {
+        StaticMeshComponent->SetVisibility(false);
+        StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Hiding StaticMeshComponent."), *GetNameSafe(this));
+    }
+    // --- Ensure the primary PMC is visible and interactable before slicing ---
+    ProceduralMeshComponent->SetVisibility(true);
+    // ProceduralMeshComponent->SetCollisionProfileName(FName("PhysicsActor")); // Set later before physics
+    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Block);
+
+    // Use world space plane position for slicing
+    FVector WorldPlanePosition = PlanePosition; // Assuming trace hit location is already in world space
+    FVector WorldPlaneNormal = PlaneNormal;     // Assuming trace hit normal is already in world space
+
+    // --- Destroy the PREVIOUS OtherHalf component if it exists from a prior slice ---
+    if (OtherHalfProceduralMeshComponent)
+    {
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Destroying previous OtherHalfProceduralMeshComponent before new slice."), *GetNameSafe(this));
+         OtherHalfProceduralMeshComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+         OtherHalfProceduralMeshComponent->UnregisterComponent();
+         OtherHalfProceduralMeshComponent->DestroyComponent();
+         OtherHalfProceduralMeshComponent = nullptr;
+    }
+
+    // --- Temporarily disable physics on the component to be sliced ---
+    bool bWasSimulatingPhysics = ProceduralMeshComponent->IsSimulatingPhysics();
+    if (bWasSimulatingPhysics)
+    {
+        ProceduralMeshComponent->SetSimulatePhysics(false);
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Temporarily disabled physics before slicing."), *GetNameSafe(this));
+    }
+
+
+    // Perform the actual slice using SliceProceduralMesh
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Calling SliceProceduralMesh."), *GetNameSafe(this));
+    double StartTime = FPlatformTime::Seconds();
+
+    UProceduralMeshComponent* TempOtherHalf = nullptr;
+
+    UKismetProceduralMeshLibrary::SliceProceduralMesh(
+        ProceduralMeshComponent,
+        WorldPlanePosition,
+        WorldPlaneNormal,
+        true,
+        TempOtherHalf,
+        EProcMeshSliceCapOption::CreateNewSectionForCap,
+        CapMaterial
+    );
+
+    double EndTime = FPlatformTime::Seconds();
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SliceProceduralMesh completed in %.4f seconds."), *GetNameSafe(this), EndTime - StartTime);
+
+
+    // Check if the slice was successful and generated the other half
+    if (TempOtherHalf && TempOtherHalf->GetNumSections() > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Slice successful. TempOtherHalf component created with %d sections."), *GetNameSafe(this), TempOtherHalf->GetNumSections());
+
+        // --- Assign and Configure the NEW OtherHalf component ---
+        OtherHalfProceduralMeshComponent = TempOtherHalf;
+        if (!OtherHalfProceduralMeshComponent->GetAttachParent()) {
+             // Try KeepWorldTransform first, as SliceProceduralMesh might create the component in world space relative to the original
+             OtherHalfProceduralMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform); 
+        }
+        OtherHalfProceduralMeshComponent->RegisterComponent(); // Ensure it's registered
+        OtherHalfProceduralMeshComponent->SetVisibility(true);
+
+        // --- Configure Physics for the NEW OtherHalf component ---
+        FName CollisionProfileName = FName("PhysicsActor"); // Use the profile that simulates physics
+        OtherHalfProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName);
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set OtherHalf Collision Profile to '%s'. Current Profile: %s"),
+            *GetNameSafe(this),
+            *CollisionProfileName.ToString(),
+            *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString());
+
+        OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // Enable physics simulation
+        // Optional: Add impulse if needed
+        FVector ImpulseDirection = WorldPlaneNormal.GetSafeNormal(); // Use slice normal for direction
+        float ImpulseStrength = 100.0f; // Adjust as needed
+        OtherHalfProceduralMeshComponent->AddImpulse(ImpulseDirection * ImpulseStrength, NAME_None, true); // Push away from the cut
+
+        // Log final state of OtherHalf
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: New OtherHalf State: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
+               *GetNameSafe(this),
+               OtherHalfProceduralMeshComponent->IsVisible(),
+               OtherHalfProceduralMeshComponent->IsCollisionEnabled(),
+               *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString(),
+               OtherHalfProceduralMeshComponent->IsSimulatingPhysics(),
+               OtherHalfProceduralMeshComponent->GetNumSections());
+
+
+        // --- Re-configure Physics for the ORIGINAL PMC component ---
+        // Ensure the original part also uses the physics profile and simulates physics
+        ProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName); // Match profile
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set Original PMC Collision Profile to '%s' AFTER Slice. Current Profile: %s"),
+               *GetNameSafe(this),
+               *CollisionProfileName.ToString(),
+               *ProceduralMeshComponent->GetCollisionProfileName().ToString());
+
+        // **** THIS IS THE FIX for original part not simulating physics ****
+        ProceduralMeshComponent->SetSimulatePhysics(true); // <<<< RE-ENABLE PHYSICS
+        // ******************************************************************
+
+        // Add opposite impulse to the original part
+        ProceduralMeshComponent->AddImpulse(-ImpulseDirection * ImpulseStrength, NAME_None, true); // Push other way
+
+        // Log final state of Original PMC
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Original PMC State After Slice: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
+               *GetNameSafe(this),
+               ProceduralMeshComponent->IsVisible(),
+               ProceduralMeshComponent->IsCollisionEnabled(),
+               *ProceduralMeshComponent->GetCollisionProfileName().ToString(),
+               ProceduralMeshComponent->IsSimulatingPhysics(),
+               ProceduralMeshComponent->GetNumSections()); // Log section count
+
+
+        // Mark as sliced
+        bIsSliced = true;
+    }
+    else // Slice failed or created an empty component
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SliceProceduralMesh failed or did not generate OtherHalf component."), *GetNameSafe(this));
+        if (TempOtherHalf)
+        {
+            TempOtherHalf->DestroyComponent();
+             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Destroyed empty/invalid temporary OtherHalf component."), *GetNameSafe(this));
+        }
+         // Re-enable physics on original component if it was disabled before the failed slice attempt
+         if (bWasSimulatingPhysics)
+         {
+             ProceduralMeshComponent->SetSimulatePhysics(true);
+             // Maybe recreate state here too if slice fails?
+             ProceduralMeshComponent->RecreatePhysicsState();
+             ProceduralMeshComponent->WakeAllRigidBodies();
+             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Re-enabled physics on original PMC after failed slice."), *GetNameSafe(this));
+         }
+    }
+}
+
 void AInventoryItemActor::RequestEnablePhysics()
 {
-    bEnablePhysicsRequested = true;
+    // Update this if physics should affect the ProceduralMeshComponent when sliced
+	if (StaticMeshComponent)
+	{
+		StaticMeshComponent->SetSimulatePhysics(true);
+		StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+    if (bIsSliced && ProceduralMeshComponent)
+    {        
+        ProceduralMeshComponent->SetSimulatePhysics(true);
+        ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
 }
 
 // Called every frame
@@ -264,12 +442,14 @@ void AInventoryItemActor::PostActorCreated()
     }
 }
 
+// REMOVED SetStaticMesh function definition as declaration was removed from header
+/*
 void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
 {
     // Use the correct component name declared in the header
-    if (!TemporarySourceMeshComponent)
+    if (!StaticMeshComponent)
     {
-        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - TemporarySourceMeshComponent is null!"));
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - StaticMeshComponent is null!"));
         return;
     }
     if (!ProceduralMeshComponent) // This check is fine
@@ -279,13 +459,13 @@ void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
     }
 
     // Use the correct component name
-    TemporarySourceMeshComponent->SetStaticMesh(NewStaticMesh);
+    StaticMeshComponent->SetStaticMesh(NewStaticMesh);
 
     if (NewStaticMesh)
     {
         // Copy mesh data from the correct component
         UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(
-            TemporarySourceMeshComponent, // Use the correct source component
+            StaticMeshComponent, // Use the correct source component
             0, // LOD Index
             ProceduralMeshComponent,
             true // Create Collision
@@ -317,5 +497,46 @@ void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
         {
              UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get BodySetup from ProceduralMeshComponent for collision setup."), *GetNameSafe(this));
         }
+    }
+}
+*/
+
+// Called when properties are changed in the editor AFTER construction
+void AInventoryItemActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    // Get the name of the property that changed
+    FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
+
+    // If the ItemID (or its DataTable/RowName) or the InventoryDataTable changes, update ItemData and mesh
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(AInventoryItemActor, Item) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, DataTable) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(FDataTableRowHandle, RowName) ||
+        PropertyName == GET_MEMBER_NAME_CHECKED(AInventoryItemActor, InventoryDataTable))
+    {
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: PostEditChangeProperty detected change in ItemID or DataTable. Updating..."), *GetNameSafe(this));
+        // Ensure the ItemID uses the assigned InventoryDataTable if its own DataTable is null
+         if (InventoryDataTable.IsValid() && Item.ItemID.DataTable == nullptr)
+         {
+             Item.ItemID.DataTable = InventoryDataTable.LoadSynchronous();
+         }
+
+         // Look up the FInventoryItemStruct based on the (potentially updated) Item.ItemID
+         if (Item.ItemID.DataTable && !Item.ItemID.RowName.IsNone())
+         {             ItemData = Item.ItemID.DataTable->FindRow<FInventoryItemStruct>(Item.ItemID.RowName, TEXT("PostEditChangeProperty"));
+         }
+         else
+         {
+             ItemData = nullptr; // Clear if ItemID is invalid
+         }
+         UpdateMeshFromData(); // Update the mesh display
+    }
+
+     // If CapMaterial changed, we don't need to do anything immediately,
+     // but it will be used the next time SliceItem is called.
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(AInventoryItemActor, CapMaterial))
+    {
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: CapMaterial changed."), *GetNameSafe(this));
     }
 }
