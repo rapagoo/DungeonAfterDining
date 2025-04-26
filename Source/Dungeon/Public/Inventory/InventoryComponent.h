@@ -86,6 +86,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool AddItem(const FSlotStruct& ItemToAdd);
 
+	// Removes a specified quantity of an item from a specific slot
+	// Returns true if removal was successful
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool RemoveItemFromSlot(int32 SlotIndex, int32 QuantityToRemove = 1);
+
 	// Updates the inventory UI widget with the current items
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void UpdateInventoryUI();

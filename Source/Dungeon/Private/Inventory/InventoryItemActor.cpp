@@ -224,6 +224,18 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
          UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Temporarily disabled physics before slicing."), *GetNameSafe(this));
     }
 
+    // Ensure the procedural mesh has physics data ready for slicing by enabling collision
+    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    // Ensure the physics body instance is created if it wasn't already
+    if (ProceduralMeshComponent->GetBodyInstance() != nullptr && !ProceduralMeshComponent->GetBodyInstance()->IsValidBodyInstance())
+    {
+         ProceduralMeshComponent->RecreatePhysicsState();
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Recreated physics state for ProceduralMeshComponent before slicing."), *GetNameSafe(this));
+    } else if (ProceduralMeshComponent->GetBodyInstance() == nullptr) {
+         UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: ProceduralMeshComponent BodyInstance is null before slicing."), *GetNameSafe(this));
+         // Optionally try recreating state here too?
+         // ProceduralMeshComponent->RecreatePhysicsState();
+    }
 
     // Perform the actual slice using SliceProceduralMesh
     UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Calling SliceProceduralMesh."), *GetNameSafe(this));
@@ -333,16 +345,14 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
 
 void AInventoryItemActor::RequestEnablePhysics()
 {
-    // Update this if physics should affect the ProceduralMeshComponent when sliced
-	if (StaticMeshComponent)
-	{
-		StaticMeshComponent->SetSimulatePhysics(true);
-		StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	}
-    if (bIsSliced && ProceduralMeshComponent)
-    {        
-        ProceduralMeshComponent->SetSimulatePhysics(true);
-        ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: RequestEnablePhysics called. Setting bEnablePhysicsRequested = true."), *GetNameSafe(this));
+    // Only set the flag. The actual enabling will happen in Tick.
+    bEnablePhysicsRequested = true;
+    // Ensure Tick is enabled if it wasn't already (important if Tick was disabled for optimization)
+    if (!PrimaryActorTick.IsTickFunctionEnabled())
+    {
+        SetActorTickEnabled(true);
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Tick function was disabled, re-enabling for physics request."), *GetNameSafe(this));
     }
 }
 
@@ -351,29 +361,50 @@ void AInventoryItemActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-    if (bEnablePhysicsRequested)
-    {
-        UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(GetRootComponent());
-        if (ProcMesh && !ProcMesh->IsSimulatingPhysics()) // Check if not already simulating
-        {
-            // Log current state before enabling physics
-            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Tick - Enabling physics. Current State: Profile=%s, Enabled=%s, WorldStaticResponse=%d"), 
-                *GetNameSafe(this), 
-                *ProcMesh->GetCollisionProfileName().ToString(), 
-                ProcMesh->IsCollisionEnabled() ? TEXT("True") : TEXT("False"),
-                ProcMesh->GetCollisionResponseToChannel(ECC_WorldStatic)); // Log current settings
+	// Handle physics enabling request
+	if (bEnablePhysicsRequested)
+	{
+		bEnablePhysicsRequested = false; // Consume the request
 
-            // Ensure it blocks the ground just in case
-            ProcMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); 
-            ProcMesh->SetSimulatePhysics(true);
-            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Enabled physics in Tick after request."), *GetNameSafe(this));
-            // Optionally disable tick after physics is enabled if no longer needed
-            // SetActorTickEnabled(false); 
-        }
-        bEnablePhysicsRequested = false; // Reset the flag regardless of success
-    }
+		// Choose which component simulates physics based on sliced state
+		if (bIsSliced)
+		{
+			 // If already sliced, physics should be handled by the proc meshes (likely enabled in SliceItem)
+             // This block can ensure they are still simulating if needed.
+			 if (ProceduralMeshComponent && !ProceduralMeshComponent->IsSimulatingPhysics())
+             {
+                 ProceduralMeshComponent->SetSimulatePhysics(true);
+                 UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Ensuring ProceduralMeshComponent simulates physics (already sliced)."), *GetNameSafe(this));
+             }
+             if (OtherHalfProceduralMeshComponent && !OtherHalfProceduralMeshComponent->IsSimulatingPhysics())
+             {
+                 OtherHalfProceduralMeshComponent->SetSimulatePhysics(true);
+                  UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Ensuring OtherHalfProceduralMeshComponent simulates physics (already sliced)."), *GetNameSafe(this));
+             }
+		}
+		else
+		{
+			// If not sliced, enable physics on the StaticMeshComponent
+			if (StaticMeshComponent && !StaticMeshComponent->IsSimulatingPhysics())
+			{
+				UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Tick - Enabling physics on StaticMeshComponent."), *GetNameSafe(this));
+				// Ensure compatible collision settings BEFORE enabling physics simulation
+				StaticMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName);
+				StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+				StaticMeshComponent->SetSimulatePhysics(true);
+			}
+			else if (!StaticMeshComponent)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Tick - Could not enable physics on StaticMeshComponent (null?)."), *GetNameSafe(this));
+			}
+            else if (StaticMeshComponent && StaticMeshComponent->IsSimulatingPhysics())
+            {
+                 // Already simulating, do nothing
+                 UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Physics enable requested, but StaticMeshComponent already simulating."), *GetNameSafe(this));
+            }
+		}
+	}
 }
-
 // Set item data and update the mesh
 void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
 {

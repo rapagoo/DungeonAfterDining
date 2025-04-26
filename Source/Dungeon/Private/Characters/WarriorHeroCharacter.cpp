@@ -26,6 +26,7 @@
 #include "Inventory/InventoryItemActor.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
+#include "Inventory/SlotStruct.h"
 
 #include "WarriorDebugHelper.h"
 
@@ -95,6 +96,12 @@ UPawnUIComponent* AWarriorHeroCharacter::GetPawnUIComponent() const
 UHeroUIComponent* AWarriorHeroCharacter::GetHeroUIComponent() const
 {
 	return HeroUIComponent;
+}
+
+// Getter function implementation for cooking mode status
+bool AWarriorHeroCharacter::IsInCookingMode() const
+{
+	return bIsInCookingMode;
 }
 
 void AWarriorHeroCharacter::PossessedBy(AController* NewController)
@@ -592,3 +599,84 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
 
     // UE_LOG(LogTemp, Warning, TEXT("Actual mesh slicing logic is not yet implemented in PerformSlice.")); // Removed old warning
 }
+
+// Implementation for placing an item from the inventory onto the interactable table
+void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
+{
+	UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Function called for SlotIndex %d."), SlotIndex);
+
+	// 1. Validate necessary components and state
+	if (!InventoryComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] InventoryComponent is null."));
+		return;
+	}
+	if (!CurrentInteractableTable)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] CurrentInteractableTable is null. Cannot place item."));
+		return;
+	}
+	if (!DefaultItemActorClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] DefaultItemActorClass is not set in Character Defaults. Cannot spawn item actor."));
+		return;
+	}
+    // Check if SlotIndex is valid directly against the component's array
+	if (!InventoryComponent->InventorySlots.IsValidIndex(SlotIndex))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Invalid SlotIndex: %d"), SlotIndex);
+		return;
+	}
+
+	// 2. Get the item data from the slot (make a copy)
+	FSlotStruct ItemDataToPlace = InventoryComponent->InventorySlots[SlotIndex];
+
+	// 3. Check if the slot is actually occupied
+	if (ItemDataToPlace.ItemID.RowName.IsNone() || ItemDataToPlace.Quantity <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Slot %d is empty. Cannot place."), SlotIndex);
+		return;
+	}
+
+	// 4. Attempt to remove ONE item from the inventory slot
+	if (InventoryComponent->RemoveItemFromSlot(SlotIndex, 1))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex);
+
+		// 5. Determine spawn location and rotation on the table
+		//    (Simple approach: slightly above the table's center)
+		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation() + FVector(0, 0, 50.0f); // Adjust Z offset as needed
+		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation(); // Or FRotator::ZeroRotator
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.Instigator = GetInstigator();
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+		// 6. Spawn the item actor
+		AInventoryItemActor* PlacedActor = GetWorld()->SpawnActor<AInventoryItemActor>(DefaultItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+		if (PlacedActor)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully spawned actor %s."), *PlacedActor->GetName());
+
+			// 7. Set up the spawned actor
+			FSlotStruct SpawnedItemData = ItemDataToPlace; // Use the copied data
+			SpawnedItemData.Quantity = 1; // We are placing only one item
+			PlacedActor->SetItemData(SpawnedItemData);
+			PlacedActor->RequestEnablePhysics();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s."), *DefaultItemActorClass->GetName());
+			// Optional: Consider trying to add the item back to the inventory if spawning failed (though this could be complex)
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to remove item from slot %d. Aborting placement."), SlotIndex);
+	}
+}
+
+#pragma region Components Getters
+// ... existing code ...

@@ -40,6 +40,14 @@ public:
 	virtual UHeroUIComponent* GetHeroUIComponent() const override;
 	//~ End IPawnUIInterface Interface
 
+	// Returns the cooking mode status
+	UFUNCTION(BlueprintPure, Category = "State")
+	bool IsInCookingMode() const;
+
+	// Function to handle placing an item onto a table (implementation in .cpp)
+	UFUNCTION(BlueprintCallable, Category = "Inventory | Interaction")
+	void PlaceItemOnTable(int32 SlotIndex);
+
 protected:
 	//~ Begin APawn Interface.
 	virtual void PossessedBy(AController* NewController) override;
@@ -127,6 +135,10 @@ private:
 	// Input Action for slicing
 	UPROPERTY(EditDefaultsOnly, Category = "Input | Cooking")
 	class UInputAction* SliceAction;
+
+	// The default class of item actor to spawn when placing items on a table
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory | Interaction")
+	TSubclassOf<AInventoryItemActor> DefaultItemActorClass;
 
 	// Variables to store slice start/end points
 	FVector SliceStartWorldLocation = FVector::ZeroVector;

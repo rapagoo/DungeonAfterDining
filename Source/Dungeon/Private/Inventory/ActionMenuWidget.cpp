@@ -2,6 +2,7 @@
 
 #include "Inventory/ActionMenuWidget.h"
 #include "Components/Button.h"
+#include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Characters/WarriorHeroCharacter.h"
 #include "Inventory/InventoryComponent.h"
@@ -12,14 +13,14 @@
 #include "Inventory/SlotWidget.h" // Include SlotWidget header
 #include "Inventory/InventoryWidget.h" // Needed for casting InventoryWidgetInstance
 #include "GameFramework/PlayerController.h" // Needed for SetInputMode
+#include "Framework/Application/SlateApplication.h" // For focus
 
 void UActionMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Bind button events
+	// Bind button events EXCEPT DropButton (handled in InitializeMenu)
 	if (UseButton) UseButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnUseButtonClicked);
-	if (DropButton) DropButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnDropButtonClicked);
 	if (CancelButton) CancelButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnCancelButtonClicked);
 
 	if (UseButton) UseButton->OnHovered.AddDynamic(this, &UActionMenuWidget::OnUseButtonHovered);
@@ -66,6 +67,47 @@ void UActionMenuWidget::InitializeMenu(const FSlotStruct& InItem, int32 InSlotIn
 		OwningSlotWidget ? *OwningSlotWidget->GetName() : TEXT("None"));
 	
 	// Potentially update button visibility/text based on ItemToActOn if needed
+
+	// --- Conditional Button Binding and Text ---
+	bool bIsCooking = (OwnerCharacter != nullptr && OwnerCharacter->IsInCookingMode());
+	UE_LOG(LogTemp, Log, TEXT("ActionMenu: Is Cooking Mode? %d"), bIsCooking);
+
+	if (DropButton)
+	{
+		// Always clear previous bindings first to be safe
+		DropButton->OnClicked.Clear();
+
+		if (bIsCooking)
+		{
+			// Bind to Place function
+			DropButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnPlaceButtonClicked);
+
+			// --- Change Button Text using the bound variable --- 
+			if (DropButtonText) // Use the UPROPERTY directly
+			{
+				DropButtonText->SetText(FText::FromString(TEXT("Place")));
+			}
+			else {
+				// This warning should ideally not appear if WBP_ActionMenu is set up correctly
+				UE_LOG(LogTemp, Warning, TEXT("ActionMenu: DropButtonText variable is not bound! Check WBP_ActionMenu."));
+			}
+
+		}
+		else
+		{
+			// Bind to Drop function
+			DropButton->OnClicked.AddDynamic(this, &UActionMenuWidget::OnDropButtonClicked);
+
+			// --- Ensure Button Text is "Drop" using the bound variable --- 
+			if (DropButtonText) // Use the UPROPERTY directly
+			{
+				DropButtonText->SetText(FText::FromString(TEXT("Drop")));
+			}
+			else {
+				UE_LOG(LogTemp, Warning, TEXT("ActionMenu: DropButtonText variable is not bound! Check WBP_ActionMenu."));
+			}
+		}
+	}
 }
 
 void UActionMenuWidget::OnUseButtonClicked()
@@ -100,6 +142,45 @@ void UActionMenuWidget::OnUseButtonClicked()
 		}
 	}
 	RemoveFromParent(); 
+}
+
+void UActionMenuWidget::OnPlaceButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("\'Place\' button clicked for slot %d"), ItemSlotIndex);
+
+	if (!OwnerCharacter)
+	{
+		UE_LOG(LogTemp, Error, TEXT("OnPlaceButtonClicked: OwnerCharacter is null!"));
+		RemoveFromParent();
+		return;
+	}
+	if (ItemSlotIndex < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("OnPlaceButtonClicked: Invalid ItemSlotIndex: %d"), ItemSlotIndex);
+		RemoveFromParent();
+		return;
+	}
+
+	// Call the function on the character to handle placing the item
+	// This function needs to be implemented in AWarriorHeroCharacter
+	OwnerCharacter->PlaceItemOnTable(ItemSlotIndex);
+
+	// Focus logic (can be improved, but keeping original for now)
+	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+	UInventoryComponent* OwnerInvComp = OwningSlotWidget ? OwningSlotWidget->GetOwnerInventory() : nullptr;
+	if (PC && OwnerInvComp)
+	{
+		UUserWidget* InvWidgetInstance = OwnerInvComp->GetInventoryWidgetInstance();
+		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InvWidgetInstance);
+		if (InventoryWidget)
+		{
+			FInputModeUIOnly InputModeData;
+			InputModeData.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			PC->SetInputMode(InputModeData);
+		}
+	}
+	RemoveFromParent(); // Close the menu
 }
 
 void UActionMenuWidget::OnDropButtonClicked()

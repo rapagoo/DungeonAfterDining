@@ -45,6 +45,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UImage* CancelButtonHoverImage;
 
+	// Bind to the TextBlock inside Drop Button (set Is Variable=true in WBP_ActionMenu)
+	UPROPERTY(meta = (BindWidget))
+	class UTextBlock* DropButtonText;
+
 	// --- Data --- 
 
 	// The item slot this menu is acting upon
@@ -86,6 +90,9 @@ protected:
 
 	UFUNCTION()
 	void OnDropButtonClicked();
+
+	UFUNCTION()
+	void OnPlaceButtonClicked();
 
 	UFUNCTION()
 	void OnCancelButtonClicked();
