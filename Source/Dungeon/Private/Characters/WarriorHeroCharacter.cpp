@@ -27,6 +27,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "Inventory/SlotStruct.h"
+#include "Components/SceneComponent.h" // 추가
 
 #include "WarriorDebugHelper.h"
 
@@ -643,17 +644,31 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex);
 
-		// 5. Determine spawn location and rotation on the table
-		//    (Simple approach: slightly above the table's center)
-		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation() + FVector(0, 0, 50.0f); // Adjust Z offset as needed
-		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation(); // Or FRotator::ZeroRotator
+		// 5. Determine spawn location and rotation using the table's spawn point component
+		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // 기본값
+		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation(); // 기본값
+
+		// 테이블 블루프린트에서 ItemSpawnPoint 컴포넌트를 찾습니다. (이름은 블루프린트에서 지정한 대로)
+		USceneComponent* SpawnPointComp = Cast<USceneComponent>(CurrentInteractableTable->GetDefaultSubobjectByName(TEXT("ItemSpawnPoint")));
+
+		if (SpawnPointComp)
+		{
+			SpawnLocation = SpawnPointComp->GetComponentLocation();
+			SpawnRotation = SpawnPointComp->GetComponentRotation();
+			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint. Using its transform: Loc=%s, Rot=%s"), *SpawnLocation.ToString(), *SpawnRotation.ToString());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Could not find 'ItemSpawnPoint' component on table %s. Falling back to default offset."), *CurrentInteractableTable->GetName());
+			SpawnLocation += FVector(0, 0, 50.0f); // 예비 로직 (선택 사항)
+		}
 
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
 		SpawnParams.Instigator = GetInstigator();
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-		// 6. Spawn the item actor
+		// 6. Spawn the item actor at the spawn point location
 		AInventoryItemActor* PlacedActor = GetWorld()->SpawnActor<AInventoryItemActor>(DefaultItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
 
 		if (PlacedActor)
@@ -664,12 +679,11 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 			FSlotStruct SpawnedItemData = ItemDataToPlace; // Use the copied data
 			SpawnedItemData.Quantity = 1; // We are placing only one item
 			PlacedActor->SetItemData(SpawnedItemData);
-			PlacedActor->RequestEnablePhysics();
+			// PlacedActor->RequestEnablePhysics(); // 필요에 따라 물리 활성화 여부 결정
 		}
 		else
 		{
 			UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s."), *DefaultItemActorClass->GetName());
-			// Optional: Consider trying to add the item back to the inventory if spawning failed (though this could be complex)
 		}
 	}
 	else
