@@ -106,6 +106,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Slicing")
 	virtual void SliceItem(const FVector& PlanePosition, const FVector& PlaneNormal);
 
+	// Returns whether the item has been sliced
+	UFUNCTION(BlueprintPure, Category = "Slicing")
+	bool IsSliced() const { return bIsSliced; }
+
 	// Called when properties are changed in the editor AFTER construction
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 

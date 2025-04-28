@@ -14,6 +14,7 @@ class UInputMappingContext;
 class USceneCaptureComponent2D;
 class USphereComponent;
 class AInteractableTable;
+class UCookingWidget;
 struct FInputActionValue;
 class UHeroCombatComponent;
 class UHeroUIComponent;
@@ -88,6 +89,14 @@ protected:
 
 	// Performs the actual slice on the item
 	void PerformSlice(AInventoryItemActor* ItemToSlice, const FVector& PlanePosition, const FVector& PlaneNormal);
+
+	// The Blueprint class of the cooking widget to spawn
+	UPROPERTY(EditDefaultsOnly, Category = "UI | Cooking")
+	TSubclassOf<UCookingWidget> CookingWidgetClass;
+
+	// Pointer to the currently active cooking widget instance
+	UPROPERTY(Transient) // Use Transient as it's managed during gameplay
+	TWeakObjectPtr<UCookingWidget> CurrentCookingWidget;
 
 private:
 

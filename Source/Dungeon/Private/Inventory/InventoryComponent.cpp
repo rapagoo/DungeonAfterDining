@@ -140,10 +140,30 @@ void UInventoryComponent::ToggleInventory()
 	// Toggle visibility and input mode
 	if (InventoryWidgetInstance->IsInViewport())
 	{
+		// --- Start Closing Inventory --- 
 		InventoryWidgetInstance->RemoveFromParent();
-		PlayerController->SetInputMode(FInputModeGameOnly());
-		PlayerController->SetShowMouseCursor(false);
-		UE_LOG(LogTemp, Log, TEXT("Inventory Closed"));
+
+		// Check if the owner is in cooking mode
+		AWarriorHeroCharacter* OwnerCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
+		bool bStillInCookingMode = OwnerCharacter ? OwnerCharacter->IsInCookingMode() : false;
+
+		if (bStillInCookingMode)
+		{
+			// Keep UI input mode and cursor if still cooking
+			UE_LOG(LogTemp, Log, TEXT("Inventory Closed, but staying in Cooking Mode input."));
+			FInputModeGameAndUI InputModeData; // Use GameAndUI to allow background game interaction if needed
+			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+			InputModeData.SetHideCursorDuringCapture(false);
+			PlayerController->SetInputMode(InputModeData);
+			PlayerController->SetShowMouseCursor(true);
+		}
+		else
+		{
+			// Restore game-only input mode if not cooking
+			UE_LOG(LogTemp, Log, TEXT("Inventory Closed, returning to GameOnly input."));
+			PlayerController->SetInputMode(FInputModeGameOnly());
+			PlayerController->SetShowMouseCursor(false);
+		}
 	}
 	else
 	{

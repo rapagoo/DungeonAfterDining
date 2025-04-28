@@ -30,6 +30,8 @@
 #include "Components/SceneComponent.h" // 추가
 
 #include "WarriorDebugHelper.h"
+#include "UI/Inventory/CookingWidget.h" // Include the cooking widget header
+#include "Blueprint/UserWidget.h" // Needed for CreateWidget
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
@@ -333,13 +335,25 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
     {
         // Exit Cooking Mode
         UE_LOG(LogTemp, Log, TEXT("Exiting Cooking Mode..."));
+
+        // Remove and clean up the cooking widget
+        if (CurrentCookingWidget.IsValid())
+        {
+            CurrentCookingWidget->RemoveFromParent();
+            if (CurrentInteractableTable) // Ensure table still exists
+            {
+                CurrentInteractableTable->SetActiveCookingWidget(nullptr);
+            }
+            CurrentCookingWidget = nullptr;
+        }
+
         // Remove Cooking Input Mapping Context if it's valid
         if (CookingMappingContext)
         {
             Subsystem->RemoveMappingContext(CookingMappingContext);
         }
         PlayerController->SetViewTargetWithBlend(this, 0.5f); // Blend back to self
-        
+
         // Restore game input mode
         FInputModeGameOnly InputModeData;
         PlayerController->SetInputMode(InputModeData);
@@ -349,9 +363,9 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
         bIsDraggingSlice = false; // Reset dragging state
     }
     else
-    {   
+    {
         // Attempt to Enter Cooking Mode
-        if (CurrentInteractableTable) 
+        if (CurrentInteractableTable)
         {
             ACameraActor* CookingCamera = CurrentInteractableTable->GetCookingCamera();
             if (CookingCamera)
@@ -366,17 +380,37 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
                 {
                     UE_LOG(LogTemp, Warning, TEXT("CookingMappingContext is not set in Character Defaults. Cooking input might not work."));
                 }
-                
+
                 PlayerController->SetViewTargetWithBlend(CookingCamera, 0.5f); // Blend to table camera
 
                 // Set input mode for cooking (needs mouse interaction)
                 FInputModeGameAndUI InputModeData;
-                InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
+                InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
                 InputModeData.SetHideCursorDuringCapture(false); // Ensure cursor stays visible while dragging
                 PlayerController->SetInputMode(InputModeData);
                 PlayerController->SetShowMouseCursor(true); // Show cursor for interaction
 
                 bIsInCookingMode = true;
+
+                // Create and show the cooking widget
+                if (CookingWidgetClass)
+                {
+                    UCookingWidget* NewWidget = CreateWidget<UCookingWidget>(PlayerController, CookingWidgetClass);
+                    if (NewWidget)
+                    {
+                        NewWidget->AddToViewport();
+                        CurrentInteractableTable->SetActiveCookingWidget(NewWidget); // Link widget to table
+                        CurrentCookingWidget = NewWidget; // Store reference
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Error, TEXT("Failed to create Cooking Widget instance."));
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("CookingWidgetClass is not set in Character Defaults. Cannot create cooking UI."));
+                }
             }
             else
             {
@@ -644,23 +678,23 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex);
 
-		// 5. Determine spawn location and rotation using the table's spawn point component
-		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // 기본값
-		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation(); // 기본값
+		// 5. Determine spawn location and rotation on the table
+		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // Default location
+		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation();
 
-		// 테이블 블루프린트에서 ItemSpawnPoint 컴포넌트를 찾습니다. (이름은 블루프린트에서 지정한 대로)
-		USceneComponent* SpawnPointComp = Cast<USceneComponent>(CurrentInteractableTable->GetDefaultSubobjectByName(TEXT("ItemSpawnPoint")));
-
-		if (SpawnPointComp)
+		// Try to find the 'ItemSpawnPoint' component by name
+		USceneComponent* SpawnPointComponent = Cast<USceneComponent>(CurrentInteractableTable->GetDefaultSubobjectByName(FName("ItemSpawnPoint"))); // Use GetDefaultSubobjectByName
+		if (SpawnPointComponent)
 		{
-			SpawnLocation = SpawnPointComp->GetComponentLocation();
-			SpawnRotation = SpawnPointComp->GetComponentRotation();
-			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint. Using its transform: Loc=%s, Rot=%s"), *SpawnLocation.ToString(), *SpawnRotation.ToString());
+			SpawnLocation = SpawnPointComponent->GetComponentLocation();
+			SpawnRotation = SpawnPointComponent->GetComponentRotation();
+			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint component. Using its location: %s"), *SpawnLocation.ToString());
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Could not find 'ItemSpawnPoint' component on table %s. Falling back to default offset."), *CurrentInteractableTable->GetName());
-			SpawnLocation += FVector(0, 0, 50.0f); // 예비 로직 (선택 사항)
+			// Fallback if the component wasn't found (e.g., BP not set up correctly)
+			UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Could not find 'ItemSpawnPoint' component on table '%s'. Using table actor location + offset as fallback."), *CurrentInteractableTable->GetName());
+            SpawnLocation = CurrentInteractableTable->GetActorLocation() + FVector(0, 0, 10.0f); // Reduced fallback offset
 		}
 
 		FActorSpawnParameters SpawnParams;
