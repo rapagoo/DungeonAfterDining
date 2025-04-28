@@ -430,7 +430,7 @@ void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
 		if (!ItemData)
 		{
 			// Log an error if the row was not found
-			UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SetItemData: Could not find Row '%s' in DataTable '%s'."),
+			UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SetItemData: Could not find Row '%s' in DataTable '%s'."), 
 				*GetNameSafe(this),
 				*Item.ItemID.RowName.ToString(),
 				*Item.ItemID.DataTable->GetName());

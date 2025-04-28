@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
+#include "Engine/DataTable.h"
 #include "CookingWidget.generated.h"
 
 // Forward declaration for the item actor
@@ -39,6 +40,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	class UVerticalBox* IngredientsList;
 
+	/** Data table containing cooking recipes */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
+	UDataTable* RecipeDataTable;
+
 	/** Called when the Add Ingredient button is clicked */
 	UFUNCTION()
 	void OnAddIngredientClicked();
@@ -48,11 +53,14 @@ protected:
 	void OnCookClicked();
 
 private:
+	/** Checks if the currently added ingredients match any recipe in the data table */
+	bool CheckRecipe(FName& OutResultItemID) const;
+
 	/** Pointer to the item actor currently detected nearby */
 	TWeakObjectPtr<AInventoryItemActor> NearbyIngredient;
 
-	/** List to keep track of the names of ingredients added */
+	/** List to keep track of the names (ItemIDs) of ingredients added */
 	UPROPERTY()
-	TArray<FString> AddedIngredientNames; // Use FItemData or similar later
+	TArray<FName> AddedIngredientIDs;
 
 }; 
