@@ -1,19 +1,17 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Inventory/InventoryItemActor.h"
-#include "Components/SceneComponent.h"            // For USceneComponent
-#include "Components/StaticMeshComponent.h"      // For UStaticMeshComponent
-#include "ProceduralMeshComponent.h"           // For UProceduralMeshComponent
-#include "Engine/StaticMesh.h"                 // For UStaticMesh
-#include "Engine/DataTable.h"                  // For UDataTable and FDataTableRowHandle
-#include "Inventory/InvenItemStruct.h" // For FInventoryItemStruct (Item Details)
+#include "Components/StaticMeshComponent.h"
+#include "Inventory/InvenItemStruct.h" // Corrected include path
+// #include "DataAssets/Inventory/DataAsset_ItemLookup.h" // Removed include, file not found
+#include "Kismet/GameplayStatics.h"
+#include "ProceduralMeshComponent.h" // Include for Procedural Mesh
+#include "KismetProceduralMeshLibrary.h" // Include for mesh conversion
+#include "Engine/DataTable.h"
+#include "Engine/StaticMesh.h"
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
 #include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
 #include "PhysicsEngine/BodySetup.h" // Correct path for UBodySetup
-#include "Kismet/GameplayStatics.h" // For gameplay static functions
-#include "Components/PrimitiveComponent.h" // Needed for collision/physics related operations
-#include "KismetProceduralMeshLibrary.h" // Needed for slicing operation
-#include "Materials/MaterialInterface.h" // Needed for material operations during slicing
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
@@ -407,46 +405,61 @@ void AInventoryItemActor::Tick(float DeltaTime)
 		}
 	}
 }
-
+// Set item data and update the mesh
 void AInventoryItemActor::SetItemData(const FSlotStruct& NewItem)
 {
-	// 1. Store the input slot data
-	this->Item = NewItem;
+	Item = NewItem;
 
-	// 2. Load the DataTable (ensure InventoryDataTable is valid)
-	UDataTable* LoadedDataTable = InventoryDataTable.LoadSynchronous();
-	if (!LoadedDataTable)
-	{
-		UE_LOG(LogTemp, Error, TEXT("InventoryDataTable is not valid in AInventoryItemActor::SetItemData for %s"), *GetName());
-		ItemData = nullptr; // Ensure ItemData is null if table fails
-		return; // Cannot proceed without the data table
-	}
+	// Reset ItemData pointer initially
+	ItemData = nullptr;
 
-	// 3. Find the row in the DataTable using Item.ItemID.RowName
-	// Use RowName from FDataTableRowHandle
-	if (Item.ItemID.RowName.IsNone()) // Check RowName for None
+    // Assign the actor's default DataTable to the ItemID handle if it's not already set
+    // This assumes the RowName is valid for the actor's default table.
+    if (Item.ItemID.DataTable == nullptr && InventoryDataTable.IsValid() && !Item.ItemID.RowName.IsNone()) {
+        Item.ItemID.DataTable = InventoryDataTable.LoadSynchronous();
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetItemData: Assigned InventoryDataTable to ItemID.DataTable."), *GetNameSafe(this));
+    }
+
+	// Check if the provided ItemID has a valid DataTable and RowName
+	if (Item.ItemID.DataTable && !Item.ItemID.RowName.IsNone())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ItemID.RowName is None in AInventoryItemActor::SetItemData for %s"), *GetName());
-		ItemData = nullptr; // Cannot lookup with None RowName
-	}
-	else
-	{
-		static const FString ContextString(TEXT("SetItemData Lookup"));
-		// Pass RowName (FName) to FindRow
-		ItemData = LoadedDataTable->FindRow<FInventoryItemStruct>(Item.ItemID.RowName, ContextString);
+		// Attempt to find the row in the DataTable
+        // Note: FindRow returns a non-const pointer, so ItemData should be non-const FInventoryItemStruct*
+		ItemData = Item.ItemID.DataTable->FindRow<FInventoryItemStruct>(Item.ItemID.RowName, TEXT("SetItemData"));
 
 		if (!ItemData)
 		{
-			// Use RowName.ToString() for logging
-			UE_LOG(LogTemp, Error, TEXT("Could not find ItemID.RowName '%s' in InventoryDataTable for %s"), *Item.ItemID.RowName.ToString(), *GetName());
+			// Log an error if the row was not found
+			UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SetItemData: Could not find Row '%s' in DataTable '%s'."),
+				*GetNameSafe(this),
+				*Item.ItemID.RowName.ToString(),
+				*Item.ItemID.DataTable->GetName());
 		}
+        else
+        {
+             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetItemData: Found ItemData for Row '%s'."), *GetNameSafe(this), *Item.ItemID.RowName.ToString());
+        }
+	}
+	else
+	{
+		// Log a warning if ItemID is not properly set
+		UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: SetItemData: ItemID is not valid (DataTable or RowName missing). Item.ItemID.RowName: %s"), *GetNameSafe(this), *Item.ItemID.RowName.ToString());
 	}
 
-	// 4. Update the mesh based on the (potentially newly found) ItemData
-	UpdateMeshFromData();
+	UpdateMeshFromData(); // Update visual representation
+	OnItemDataUpdated(); // Call the notification event
 
-	// 5. Call the Blueprint event (optional, depends on your logic)
-	OnItemDataUpdated();
+    // REMOVED: Do not enable physics here. Physics should be enabled externally only when dropped.
+    // UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(GetRootComponent());
+    // if (ProcMesh)
+    // {
+    //     ProcMesh->SetSimulatePhysics(true);
+    //     UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Enabled physics in SetItemData after setup."), *GetNameSafe(this));
+    // }
+    // else
+    // {
+    //     UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get ProcMesh in SetItemData to enable physics."), *GetNameSafe(this));
+    // }
 }
 
 // Called when the actor is done spawning
@@ -459,6 +472,65 @@ void AInventoryItemActor::PostActorCreated()
         UpdateMeshFromData();
     }
 }
+
+// REMOVED SetStaticMesh function definition as declaration was removed from header
+/*
+void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
+{
+    // Use the correct component name declared in the header
+    if (!StaticMeshComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - StaticMeshComponent is null!"));
+        return;
+    }
+    if (!ProceduralMeshComponent) // This check is fine
+    {
+         UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor::SetStaticMesh - ProceduralMeshComponent is null!"));
+         return;
+    }
+
+    // Use the correct component name
+    StaticMeshComponent->SetStaticMesh(NewStaticMesh);
+
+    if (NewStaticMesh)
+    {
+        // Copy mesh data from the correct component
+        UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(
+            StaticMeshComponent, // Use the correct source component
+            0, // LOD Index
+            ProceduralMeshComponent,
+            true // Create Collision
+        );
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetStaticMesh: Copied mesh from StaticMesh '%s' to ProceduralMeshComponent."), *GetNameSafe(this), *NewStaticMesh->GetName());
+    }
+    else
+    {
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SetStaticMesh: NewStaticMesh is null, clearing ProceduralMeshComponent."), *GetNameSafe(this));
+        // If NewStaticMesh is null, clear the procedural mesh
+        ProceduralMeshComponent->ClearAllMeshSections();
+    }
+
+    // After copying or clearing, ensure collision settings are suitable for physics
+    if (ProceduralMeshComponent)
+    {
+        UBodySetup* BodySetup = ProceduralMeshComponent->GetBodySetup();
+        if (BodySetup)
+        {
+            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex; // Use simple collision for physics
+            ProceduralMeshComponent->SetCollisionProfileName(UCollisionProfile::PhysicsActor_ProfileName); // Ensure physics profile
+            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled for physics
+            ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // Also ensure it blocks Visibility traces here
+
+            // Mark collision state as dirty to apply changes
+            ProceduralMeshComponent->MarkRenderStateDirty();
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get BodySetup from ProceduralMeshComponent for collision setup."), *GetNameSafe(this));
+        }
+    }
+}
+*/
 
 // Called when properties are changed in the editor AFTER construction
 void AInventoryItemActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)

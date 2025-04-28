@@ -109,7 +109,4 @@ public:
 	// Called when properties are changed in the editor AFTER construction
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
-	// Checks if the item has been successfully sliced
-	UFUNCTION(BlueprintPure, Category="Item State") 
-	bool IsSliced() const { return bIsSliced; }
 };
