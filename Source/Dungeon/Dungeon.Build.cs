@@ -23,10 +23,12 @@ public class Dungeon : ModuleRules
             "NavigationSystem",
             "UMG",
             "Slate",
-            "SlateCore", "ProceduralMeshComponent", "ProceduralMeshComponent",
+            "SlateCore", 
+            "ProceduralMeshComponent",
+			"PhysicsCore" // Added for physics related headers
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "ProceduralMeshComponent" });
+		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
