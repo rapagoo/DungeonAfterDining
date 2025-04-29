@@ -532,10 +532,11 @@ void AInventoryItemActor::SetStaticMesh(UStaticMesh* NewStaticMesh)
 }
 */
 
+#if WITH_EDITOR
 // Called when properties are changed in the editor AFTER construction
 void AInventoryItemActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-    Super::PostEditChangeProperty(PropertyChangedEvent);
+	UObject::PostEditChangeProperty(PropertyChangedEvent); // Call UObject's implementation directly
 
     // Get the name of the property that changed
     FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
@@ -571,3 +572,4 @@ void AInventoryItemActor::PostEditChangeProperty(FPropertyChangedEvent& Property
         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: CapMaterial changed."), *GetNameSafe(this));
     }
 }
+#endif

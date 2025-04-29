@@ -110,7 +110,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Slicing")
 	bool IsSliced() const { return bIsSliced; }
 
+#if WITH_EDITOR
 	// Called when properties are changed in the editor AFTER construction
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent);
+#endif
 
 };
