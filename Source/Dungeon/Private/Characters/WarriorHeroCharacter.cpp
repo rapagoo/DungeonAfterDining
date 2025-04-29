@@ -443,7 +443,7 @@ void AWarriorHeroCharacter::Input_SliceStart()
     // Get current mouse position
     if (PlayerController->GetMousePosition(SliceStartScreenPosition.X, SliceStartScreenPosition.Y))
     {
-        UE_LOG(LogTemp, Log, TEXT("Slice Start - Screen Pos: %s"), *SliceStartScreenPosition.ToString());
+        // UE_LOG(LogTemp, Log, TEXT("Slice Start - Screen Pos: %s"), *SliceStartScreenPosition.ToString()); // 제거
 
         // Use GetHitResultUnderCursor to find the object directly under the mouse
         FHitResult HitResult;
@@ -455,9 +455,9 @@ void AWarriorHeroCharacter::Input_SliceStart()
 
         // Draw debug point for where the cursor trace hit (or where it would have been)
         // We might need WorldOrigin/Direction if trace fails, but let's get it anyway for debug
-        FVector WorldOrigin, WorldDirection;
-        UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceStartScreenPosition, WorldOrigin, WorldDirection);
-        DrawDebugSphere(GetWorld(), WorldOrigin + WorldDirection * HitResult.Distance, 5.0f, 12, FColor::Yellow, false, 30.0f); // Draw where the hit occured along the old ray
+        // FVector WorldOrigin, WorldDirection; // 제거
+        // UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceStartScreenPosition, WorldOrigin, WorldDirection); // 제거
+        // DrawDebugSphere(GetWorld(), WorldOrigin + WorldDirection * HitResult.Distance, 5.0f, 12, FColor::Yellow, false, 30.0f); // 제거
 
         // Reset candidate initially
         SlicedItemCandidate = nullptr;
@@ -471,22 +471,22 @@ void AWarriorHeroCharacter::Input_SliceStart()
             {
                 SliceStartWorldLocation = HitResult.Location; // Use the actual hit location
                 SlicedItemCandidate = HitItemActor; // Store the candidate item
-                UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit INVENTORY ITEM: %s at %s. Storing as candidate. Setting bIsDraggingSlice = true."), 
-                    *SlicedItemCandidate->GetName(),
-                    *SliceStartWorldLocation.ToString()
-                );
+                // UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit INVENTORY ITEM: %s at %s. Storing as candidate. Setting bIsDraggingSlice = true."), // 제거
+                //     *SlicedItemCandidate->GetName(), // 제거
+                //     *SliceStartWorldLocation.ToString() // 제거
+                // ); // 제거
                  bIsDraggingSlice = true;
-                 DrawDebugSphere(GetWorld(), SliceStartWorldLocation, 5.0f, 12, FColor::Cyan, false, 30.0f);
+                 // DrawDebugSphere(GetWorld(), SliceStartWorldLocation, 5.0f, 12, FColor::Cyan, false, 30.0f); // 제거
             }
             else
             {
-                UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit actor '%s', but it's not an InventoryItemActor."), *HitResult.GetActor()->GetName());
+                // UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit actor '%s', but it's not an InventoryItemActor."), *HitResult.GetActor()->GetName()); // 제거
                 SliceStartWorldLocation = FVector::ZeroVector; // Still reset location if not an item
             }
         }
         else
         {
-             UE_LOG(LogTemp, Warning, TEXT("Slice Start - Cursor trace did not hit anything."));
+             // UE_LOG(LogTemp, Warning, TEXT("Slice Start - Cursor trace did not hit anything.")); // 제거
              SliceStartWorldLocation = FVector::ZeroVector; // Ensure reset
         }
         
@@ -498,17 +498,17 @@ void AWarriorHeroCharacter::Input_SliceStart()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("Slice Start - Failed to get mouse position. bIsDraggingSlice remains false."));
+        // UE_LOG(LogTemp, Warning, TEXT("Slice Start - Failed to get mouse position. bIsDraggingSlice remains false.")); // 제거
          bIsDraggingSlice = false; // Explicitly ensure it's false
     }
 }
 
 void AWarriorHeroCharacter::Input_SliceEnd()
 {
-    UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd triggered. Current bIsDraggingSlice = %d"), bIsDraggingSlice);
+    // UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd triggered. Current bIsDraggingSlice = %d"), bIsDraggingSlice); // 제거
     if (!bIsInCookingMode || !bIsDraggingSlice || !CurrentInteractableTable) 
     {
-         UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted early: CookingMode=%d, IsDragging=%d, Table=%d"), bIsInCookingMode, bIsDraggingSlice, CurrentInteractableTable != nullptr);
+         // UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted early: CookingMode=%d, IsDragging=%d, Table=%d"), bIsInCookingMode, bIsDraggingSlice, CurrentInteractableTable != nullptr); // 제거
          // Reset slice state even if aborted early
          bIsDraggingSlice = false;
          SliceStartWorldLocation = FVector::ZeroVector;
@@ -519,7 +519,7 @@ void AWarriorHeroCharacter::Input_SliceEnd()
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     if (!PlayerController) 
     {
-        UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted: No PlayerController."));
+        // UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted: No PlayerController.")); // 제거
         bIsDraggingSlice = false; // Ensure reset
         SliceStartWorldLocation = FVector::ZeroVector; 
         return;
@@ -528,16 +528,16 @@ void AWarriorHeroCharacter::Input_SliceEnd()
     FVector2D SliceEndScreenPosition;
     if (PlayerController->GetMousePosition(SliceEndScreenPosition.X, SliceEndScreenPosition.Y))
     {
-        UE_LOG(LogTemp, Log, TEXT("Slice End - Screen Pos: %s"), *SliceEndScreenPosition.ToString());
+        // UE_LOG(LogTemp, Log, TEXT("Slice End - Screen Pos: %s"), *SliceEndScreenPosition.ToString()); // 제거
 
         // --- Check Screen Distance First ---
         const float ScreenDistance = FVector2D::Distance(SliceStartScreenPosition, SliceEndScreenPosition);
         const float ScreenDistanceThreshold = 10.0f; // Minimum pixel distance for a slice
-        UE_LOG(LogTemp, Log, TEXT("Calculated Screen Distance: %.2f (Threshold: %.1f)"), ScreenDistance, ScreenDistanceThreshold);
+        // UE_LOG(LogTemp, Log, TEXT("Calculated Screen Distance: %.2f (Threshold: %.1f)"), ScreenDistance, ScreenDistanceThreshold); // 제거
 
         if (ScreenDistance < ScreenDistanceThreshold)
         {
-            UE_LOG(LogTemp, Log, TEXT("Slice canceled - screen drag distance too short."));
+            // UE_LOG(LogTemp, Log, TEXT("Slice canceled - screen drag distance too short.")); // 제거
         }
         else
         {   
@@ -550,9 +550,9 @@ void AWarriorHeroCharacter::Input_SliceEnd()
             );
             
             // Draw debug point for where the end cursor trace hit
-            FVector EndWorldOrigin, EndWorldDirection; // Need temp vars for debug draw
-            UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceEndScreenPosition, EndWorldOrigin, EndWorldDirection);
-            DrawDebugSphere(GetWorld(), EndWorldOrigin + EndWorldDirection * EndHitResult.Distance, 5.0f, 12, FColor::Orange, false, 30.0f);
+            // FVector EndWorldOrigin, EndWorldDirection; // Need temp vars for debug draw // 제거
+            // UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceEndScreenPosition, EndWorldOrigin, EndWorldDirection); // 제거
+            // DrawDebugSphere(GetWorld(), EndWorldOrigin + EndWorldDirection * EndHitResult.Distance, 5.0f, 12, FColor::Orange, false, 30.0f); // 제거
 
             AInventoryItemActor* EndHitItemActor = nullptr;
             if (bEndHit && EndHitResult.GetActor())
@@ -564,7 +564,7 @@ void AWarriorHeroCharacter::Input_SliceEnd()
             }
             else
             {
-                 UE_LOG(LogTemp, Warning, TEXT("Slice End - Cursor trace for end point did not hit anything or invalid actor."));
+                 // UE_LOG(LogTemp, Warning, TEXT("Slice End - Cursor trace for end point did not hit anything or invalid actor.")); // 제거
                  SliceEndWorldLocation = FVector::ZeroVector;
             }
 
@@ -577,9 +577,9 @@ void AWarriorHeroCharacter::Input_SliceEnd()
                 // All conditions met, proceed with slice
                 if (SlicedItemCandidate)
                 {
-                    UE_LOG(LogTemp, Log, TEXT("Start/End points valid and hit the SAME InventoryItem (%s). Performing Slice."), *SlicedItemCandidate->GetName());
+                    // UE_LOG(LogTemp, Log, TEXT("Start/End points valid and hit the SAME InventoryItem (%s). Performing Slice."), *SlicedItemCandidate->GetName()); // 제거
                      // Draw the debug line representing the slice path
-                    DrawDebugLine(GetWorld(), SliceStartWorldLocation, SliceEndWorldLocation, FColor::Yellow, false, 30.0f, 0, 1.0f);
+                    // DrawDebugLine(GetWorld(), SliceStartWorldLocation, SliceEndWorldLocation, FColor::Yellow, false, 30.0f, 0, 1.0f); // 제거
 
                     // Calculate cutting plane (Moved calculation here)
                     FVector SliceDirection = (SliceEndWorldLocation - SliceStartWorldLocation).GetSafeNormal();
@@ -593,19 +593,19 @@ void AWarriorHeroCharacter::Input_SliceEnd()
             else
             { 
                 // Log the reason for aborting
-                FString AbortReason = TEXT("Unknown");
-                if (!SlicedItemCandidate) AbortReason = TEXT("No valid item hit at start");
-                else if (EndHitItemActor != SlicedItemCandidate) AbortReason = FString::Printf(TEXT("End hit different actor (%s) or not an item"), EndHitItemActor ? *EndHitItemActor->GetName() : TEXT("None"));
-                else if (SliceStartWorldLocation.IsNearlyZero() || SliceEndWorldLocation.IsNearlyZero()) AbortReason = TEXT("Start or End WorldLocation zero");
-                UE_LOG(LogTemp, Warning, TEXT("Slice aborted - Reason: %s"), *AbortReason);
+                // FString AbortReason = TEXT("Unknown"); // 제거
+                // if (!SlicedItemCandidate) AbortReason = TEXT("No valid item hit at start"); // 제거
+                // else if (EndHitItemActor != SlicedItemCandidate) AbortReason = FString::Printf(TEXT("End hit different actor (%s) or not an item"), EndHitItemActor ? *EndHitItemActor->GetName() : TEXT("None")); // 제거
+                // else if (SliceStartWorldLocation.IsNearlyZero() || SliceEndWorldLocation.IsNearlyZero()) AbortReason = TEXT("Start or End WorldLocation zero"); // 제거
+                // UE_LOG(LogTemp, Warning, TEXT("Slice aborted - Reason: %s"), *AbortReason); // 제거
             }
         }
     }
-    else
-    { UE_LOG(LogTemp, Warning, TEXT("Slice End - Failed to get mouse position.")); }
+    // else // 제거 (else 블록이 비어있게 되므로 제거)
+    // { UE_LOG(LogTemp, Warning, TEXT("Slice End - Failed to get mouse position.")); } // 제거
 
     // Reset locations and dragging state AFTER the operation attempts
-    UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd finished. Resetting bIsDraggingSlice = false."));
+    // UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd finished. Resetting bIsDraggingSlice = false.")); // 제거
     bIsDraggingSlice = false; 
     SliceStartWorldLocation = FVector::ZeroVector; 
     SliceEndWorldLocation = FVector::ZeroVector;
@@ -619,26 +619,24 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
 {
     if (!ItemToSlice)
     {
-        UE_LOG(LogTemp, Error, TEXT("PerformSlice called with null ItemToSlice."));
+        // UE_LOG(LogTemp, Error, TEXT("PerformSlice called with null ItemToSlice.")); // 에러 로그는 유지하거나 필요에 따라 제거
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("PerformSlice called for '%s'. Plane Position: %s, Plane Normal: %s. Calling ItemToSlice->SliceItem()..."), 
-        *ItemToSlice->GetName(), 
-        *PlanePosition.ToString(), 
-        *PlaneNormal.ToString()
-        );
+    // UE_LOG(LogTemp, Log, TEXT("PerformSlice called for '%s'. Plane Position: %s, Plane Normal: %s. Calling ItemToSlice->SliceItem()..."), // 제거
+    //     *ItemToSlice->GetName(), // 제거
+    //     *PlanePosition.ToString(), // 제거
+    //     *PlaneNormal.ToString() // 제거
+    //     ); // 제거
 
     // Call the item's slicing function
     ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
-
-    // UE_LOG(LogTemp, Warning, TEXT("Actual mesh slicing logic is not yet implemented in PerformSlice.")); // Removed old warning
 }
 
 // Implementation for placing an item from the inventory onto the interactable table
 void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 {
-	UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Function called for SlotIndex %d."), SlotIndex);
+	// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Function called for SlotIndex %d."), SlotIndex); // 제거
 
 	// 1. Validate necessary components and state
 	if (!InventoryComponent)
@@ -648,7 +646,7 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 	}
 	if (!CurrentInteractableTable)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] CurrentInteractableTable is null. Cannot place item."));
+		// UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] CurrentInteractableTable is null. Cannot place item.")); // 에러 로그는 유지하거나 필요에 따라 제거
 		return;
 	}
 	if (!DefaultItemActorClass)
@@ -669,14 +667,14 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 	// 3. Check if the slot is actually occupied
 	if (ItemDataToPlace.ItemID.RowName.IsNone() || ItemDataToPlace.Quantity <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Slot %d is empty. Cannot place."), SlotIndex);
+		// UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Slot %d is empty. Cannot place."), SlotIndex); // 경고 로그는 유지하거나 필요에 따라 제거
 		return;
 	}
 
 	// 4. Attempt to remove ONE item from the inventory slot
 	if (InventoryComponent->RemoveItemFromSlot(SlotIndex, 1))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex);
+		// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex); // 제거
 
 		// 5. Determine spawn location and rotation on the table
 		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // Default location
@@ -688,7 +686,7 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 		{
 			SpawnLocation = SpawnPointComponent->GetComponentLocation();
 			SpawnRotation = SpawnPointComponent->GetComponentRotation();
-			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint component. Using its location: %s"), *SpawnLocation.ToString());
+			// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint component. Using its location: %s"), *SpawnLocation.ToString()); // 제거
 		}
 		else
 		{
@@ -707,7 +705,7 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 
 		if (PlacedActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully spawned actor %s."), *PlacedActor->GetName());
+			// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully spawned actor %s."), *PlacedActor->GetName()); // 제거
 
 			// 7. Set up the spawned actor
 			FSlotStruct SpawnedItemData = ItemDataToPlace; // Use the copied data
@@ -717,12 +715,12 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s."), *DefaultItemActorClass->GetName());
+			// UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s."), *DefaultItemActorClass->GetName()); // 에러 로그는 유지하거나 필요에 따라 제거
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to remove item from slot %d. Aborting placement."), SlotIndex);
+		// UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to remove item from slot %d. Aborting placement."), SlotIndex); // 경고 로그는 유지하거나 필요에 따라 제거
 	}
 }
 
