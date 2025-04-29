@@ -237,6 +237,26 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
          // ProceduralMeshComponent->RecreatePhysicsState();
     }
 
+    // --- Get the material to use for the cap --- 
+    UMaterialInterface* ActualCapMaterial = this->CapMaterial; // Default/fallback
+    if (StaticMeshComponent)
+    {
+        UMaterialInterface* OriginalMaterial = StaticMeshComponent->GetMaterial(0);
+        if (OriginalMaterial)
+        {
+            ActualCapMaterial = OriginalMaterial;
+            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Using original material from slot 0 for cap."), *GetNameSafe(this));
+        }
+        else
+        {
+             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get material from StaticMeshComponent slot 0. Using default CapMaterial."), *GetNameSafe(this));
+        }
+    }
+    else
+    {
+         UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: StaticMeshComponent is null when getting cap material. Using default CapMaterial."), *GetNameSafe(this));
+    }
+
     // Perform the actual slice using SliceProceduralMesh
     UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Calling SliceProceduralMesh."), *GetNameSafe(this));
     double StartTime = FPlatformTime::Seconds();
@@ -247,10 +267,10 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
         ProceduralMeshComponent,
         WorldPlanePosition,
         WorldPlaneNormal,
-        true,
+        true, // Create other half
         TempOtherHalf,
         EProcMeshSliceCapOption::CreateNewSectionForCap,
-        CapMaterial
+        ActualCapMaterial // Use the determined material
     );
 
     double EndTime = FPlatformTime::Seconds();
