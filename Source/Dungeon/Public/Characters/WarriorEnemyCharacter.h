@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Characters/WarriorBaseCharacter.h"
+// #include "Inventory/InventoryItemActor.h" // Removed
 #include "WarriorEnemyCharacter.generated.h"
 
 class UEnemyCombatComponent;
