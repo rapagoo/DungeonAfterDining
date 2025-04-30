@@ -32,10 +32,6 @@
 #include "WarriorDebugHelper.h"
 #include "UI/Inventory/CookingWidget.h" // Include the cooking widget header
 #include "Blueprint/UserWidget.h" // Needed for CreateWidget
-#include "Particles/ParticleSystem.h" // Added for UParticleSystem
-#include "Sound/SoundBase.h" // Added for USoundBase
-#include "NiagaraFunctionLibrary.h" // Added for Niagara SpawnSystem
-#include "NiagaraComponent.h" // Added for UNiagaraSystem type
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
@@ -626,11 +622,19 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
 {
     if (!ItemToSlice)
     {
+        // UE_LOG(LogTemp, Error, TEXT("PerformSlice called with null ItemToSlice.")); // 에러 로그는 유지하거나 필요에 따라 제거
         return;
     }
 
+    // UE_LOG(LogTemp, Log, TEXT("PerformSlice called for '%s'. Plane Position: %s, Plane Normal: %s. Calling ItemToSlice->SliceItem()..."), // 제거
+    //     *ItemToSlice->GetName(), // 제거
+    //     *PlanePosition.ToString(), // 제거
+    //     *PlaneNormal.ToString() // 제거
+    //     ); // 제거
+
     // Call the item's slicing function
     ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
+<<<<<<< HEAD
 
     // Check if the item was successfully marked as sliced after the attempt
     if (ItemToSlice->IsSliced())
@@ -662,6 +666,8 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
     {
         UE_LOG(LogTemp, Warning, TEXT("Slice attempted for %s, but IsSliced() is still false."), *ItemToSlice->GetName());
     }
+=======
+>>>>>>> parent of 01b607d (썰기 기능에 이펙트 및 사운드 추가할 수 있도록 변경)
 }
 
 // Implementation for placing an item from the inventory onto the interactable table

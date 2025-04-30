@@ -20,9 +20,6 @@ class UHeroCombatComponent;
 class UHeroUIComponent;
 class UInventoryComponent;
 class AInventoryItemActor;
-class UParticleSystem;
-class USoundBase;
-class UNiagaraSystem;
 
 /**
  * 
@@ -105,6 +102,7 @@ protected:
 	UPROPERTY(Transient) // Use Transient as it's managed during gameplay
 	TWeakObjectPtr<UCookingWidget> CurrentCookingWidget;
 
+<<<<<<< HEAD
 	// Particle effect to play when slicing
 	// Marked as deprecated, replace with Niagara. No longer exposed to editor/blueprints.
 	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
@@ -118,6 +116,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
 	USoundBase* SliceSound;
 
+=======
+>>>>>>> parent of 01b607d (썰기 기능에 이펙트 및 사운드 추가할 수 있도록 변경)
 private:
 
 #pragma region Components
