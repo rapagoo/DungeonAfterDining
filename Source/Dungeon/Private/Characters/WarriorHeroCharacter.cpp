@@ -635,7 +635,6 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
     // Call the item's slicing function
     ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
 <<<<<<< HEAD
-<<<<<<< HEAD
 
     // Check if the item was successfully marked as sliced after the attempt
     if (ItemToSlice->IsSliced())
@@ -667,8 +666,6 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
     {
         UE_LOG(LogTemp, Warning, TEXT("Slice attempted for %s, but IsSliced() is still false."), *ItemToSlice->GetName());
     }
-=======
->>>>>>> parent of 01b607d (썰기 기능에 이펙트 및 사운드 추가할 수 있도록 변경)
 =======
 >>>>>>> parent of 01b607d (썰기 기능에 이펙트 및 사운드 추가할 수 있도록 변경)
 }
