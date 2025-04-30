@@ -11,10 +11,6 @@
 #include "Engine/DataTable.h" // Ensure DataTable is included
 #include "Characters/WarriorHeroCharacter.h" // Include character to get inventory
 #include "Inventory/InventoryComponent.h" // Include inventory component
-#include "Interactables/InteractableTable.h" // Added for OwningTable
-#include "Components/SceneComponent.h" // Added for PotLocationComponent
-#include "Components/StaticMeshComponent.h" // Added for UStaticMeshComponent
-#include "ProceduralMeshComponent.h" // Corrected include path
 
 void UCookingWidget::NativeConstruct()
 {
@@ -24,17 +20,18 @@ void UCookingWidget::NativeConstruct()
 	if (AddIngredientButton)
 	{
 		AddIngredientButton->OnClicked.AddDynamic(this, &UCookingWidget::OnAddIngredientClicked);
+		// Start disabled, enabled by UpdateNearbyIngredient
 		AddIngredientButton->SetIsEnabled(false);
 	}
 	if (CookButton)
 	{
 		CookButton->OnClicked.AddDynamic(this, &UCookingWidget::OnCookClicked);
+		// Initially disable the cook button until valid ingredients are added
 		CookButton->SetIsEnabled(false);
 	}
 
 	NearbyIngredient = nullptr;
-	AddedIngredientIDs.Empty();
-	IngredientActorsInPot.Empty();
+	AddedIngredientIDs.Empty(); // Initialize the array
 }
 
 void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
@@ -58,121 +55,41 @@ void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
 
 void UCookingWidget::OnAddIngredientClicked()
 {
-	// Log the state of conditions before the check
-	AWarriorHeroCharacter* PlayerCharacter = Cast<AWarriorHeroCharacter>(GetOwningPlayerPawn());
-	AInteractableTable* CurrentTable = PlayerCharacter ? PlayerCharacter->GetCurrentInteractableTable() : nullptr;
-
-	UE_LOG(LogTemp, Log, TEXT("OnAddIngredientClicked: NearbyIngredient Valid? %s, PlayerCharacter Valid? %s, CurrentTable Valid? %s"), 
-		NearbyIngredient.IsValid() ? TEXT("Yes") : TEXT("No"),
-		IsValid(PlayerCharacter) ? TEXT("Yes") : TEXT("No"),
-		IsValid(CurrentTable) ? TEXT("Yes") : TEXT("No"));
-
-	if (NearbyIngredient.IsValid())
-	{
-		UE_LOG(LogTemp, Log, TEXT("OnAddIngredientClicked: NearbyIngredient '%s' IsSliced? %s"), 
-			*NearbyIngredient->GetName(), 
-			NearbyIngredient->IsSliced() ? TEXT("Yes") : TEXT("No"));
-	}
-
-	// Check if we have a valid, sliced ingredient actor nearby AND the player character has a valid current table
-	if (NearbyIngredient.IsValid() && NearbyIngredient->IsSliced() && CurrentTable)
+	// Check if we have a valid, sliced ingredient actor nearby
+	if (NearbyIngredient.IsValid() && NearbyIngredient->IsSliced())
 	{
 		AInventoryItemActor* IngredientToAdd = NearbyIngredient.Get();
 		FSlotStruct IngredientData = IngredientToAdd->GetItemData();
-		FName IngredientID = IngredientData.ItemID.RowName;
+		FName IngredientID = IngredientData.ItemID.RowName; // Get Item ID as FName
 
 		UE_LOG(LogTemp, Warning, TEXT("Adding Ingredient ID: %s"), *IngredientID.ToString());
 
+		// Add the ingredient ID to our internal list
 		AddedIngredientIDs.Add(IngredientID);
 
+		// Update the UI list
 		if (IngredientsList)
 		{
 			UTextBlock* NewIngredientText = NewObject<UTextBlock>(this);
 			if (NewIngredientText)
 			{
-				NewIngredientText->SetText(FText::FromName(IngredientID));
+				// Ideally, get a display name from ItemData table here
+				NewIngredientText->SetText(FText::FromName(IngredientID)); // Use FText::FromName
 				IngredientsList->AddChildToVerticalBox(NewIngredientText);
 			}
 		}
 
-		// Move the actor to the pot location using the table obtained from the character
-		USceneComponent* PotLocationComp = CurrentTable->GetPotLocationComponent();
-		if (PotLocationComp)
-		{
-			// Calculate target transform for the ACTOR at the pot location
-			FTransform TargetActorTransform = PotLocationComp->GetComponentTransform();
-			// Optional: Add slight random offset to location for visual variation
-			FVector RandomOffset = FVector(FMath::RandRange(-2.0f, 2.0f), FMath::RandRange(-2.0f, 2.0f), FMath::RandRange(0.0f, 5.0f));
-			TargetActorTransform.AddToTranslation(RandomOffset);
-			// Optional: Randomize rotation slightly? Maybe just keep pot rotation
+		// Destroy the actor in the world
+		IngredientToAdd->Destroy();
 
-			UE_LOG(LogTemp, Log, TEXT("Moving %s to target transform: %s"), *IngredientToAdd->GetName(), *TargetActorTransform.ToString());
-
-			// --- Step 1: Disable physics on ProcMesh components BEFORE moving --- 
-			TArray<UProceduralMeshComponent*> ProcMeshesToModify;
-			IngredientToAdd->GetComponents<UProceduralMeshComponent>(ProcMeshesToModify);
-			for (UProceduralMeshComponent* MeshComp : ProcMeshesToModify)
-			{
-				if (MeshComp && MeshComp->IsSimulatingPhysics())
-				{
-					UE_LOG(LogTemp, Log, TEXT("  - Disabling physics for component: %s"), *MeshComp->GetName());
-					MeshComp->SetSimulatePhysics(false);
-				}
-			}
-			// Also ensure static mesh physics is off
-			UStaticMeshComponent* StaticMesh = IngredientToAdd->FindComponentByClass<UStaticMeshComponent>();
-			if (StaticMesh && StaticMesh->IsSimulatingPhysics()) StaticMesh->SetSimulatePhysics(false);
-
-			// --- Step 2: Move the Actor itself (Root Component) --- 
-			IngredientToAdd->SetActorTransform(TargetActorTransform, false, nullptr, ETeleportType::None); 
-
-			// --- Step 3: Request physics re-enable on the actor (will happen next tick) --- 
-			IngredientToAdd->RequestPhysicsReenable();
-
-			// --- Removed physics re-enable loop --- 
-
-			// Collision should remain enabled for stacking in the pot
-			// IngredientToAdd->SetActorEnableCollision(ECollisionEnabled::NoCollision);
-
-			// --- Log FINAL locations and visibility AFTER move (physics will enable next tick) ---
-			FVector FinalActorLoc = IngredientToAdd->GetActorLocation();
-			UE_LOG(LogTemp, Log, TEXT("Post-Move Check for %s:"), *IngredientToAdd->GetName());
-			UE_LOG(LogTemp, Log, TEXT("  - Final Actor World Location: %s"), *FinalActorLoc.ToString());
-			UStaticMeshComponent* FinalStaticMesh = IngredientToAdd->FindComponentByClass<UStaticMeshComponent>();
-			if (FinalStaticMesh) {
-				UE_LOG(LogTemp, Log, TEXT("  - Final StaticMesh World Location: %s (Visible: %s)"), 
-					*FinalStaticMesh->GetComponentLocation().ToString(), 
-					FinalStaticMesh->IsVisible() ? TEXT("Yes") : TEXT("No"));
-			}
-			int ProcMeshIndex = 0;
-			for(UProceduralMeshComponent* MeshComp : ProcMeshesToModify)
-			{
-				if(MeshComp)
-				{
-					 UE_LOG(LogTemp, Log, TEXT("  - Final ProcMesh[%d] World Location: %s (Visible: %s, SimPhys: %s)"), 
-						ProcMeshIndex++,
-						*MeshComp->GetComponentLocation().ToString(), 
-						MeshComp->IsVisible() ? TEXT("Yes") : TEXT("No"),
-						MeshComp->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"));
-				}
-			}
-			// --- End Final Log --- 
-			
-			IngredientActorsInPot.Add(IngredientToAdd);
-			UE_LOG(LogTemp, Log, TEXT("Finished moving ingredient actor %s. Physics re-enable requested."), *IngredientToAdd->GetName());
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Could not find PotLocationComponent on CurrentTable %s. Destroying ingredient instead."), *GetNameSafe(CurrentTable));
-			IngredientToAdd->Destroy();
-		}
-
+		// Clear the nearby ingredient pointer and disable the button
 		NearbyIngredient = nullptr;
 		if (AddIngredientButton)
 		{
 			AddIngredientButton->SetIsEnabled(false);
 		}
 
+		// Check if the current ingredients match a recipe
 		FName TempResultID;
 		bool bRecipeFound = CheckRecipe(TempResultID);
 		if (CookButton)
@@ -182,7 +99,7 @@ void UCookingWidget::OnAddIngredientClicked()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Add Ingredient Clicked, but NearbyIngredient is not valid/sliced or Player Character/CurrentTable is not valid."));
+		UE_LOG(LogTemp, Warning, TEXT("Add Ingredient Clicked, but NearbyIngredient is not valid or not sliced."));
 	}
 }
 
@@ -216,16 +133,6 @@ void UCookingWidget::OnCookClicked()
 					{
 						IngredientsList->ClearChildren();
 					}
-
-					// Destroy the ingredient actors that were moved to the pot
-					for (TWeakObjectPtr<AInventoryItemActor> WeakActorPtr : IngredientActorsInPot)
-					{
-						if (WeakActorPtr.IsValid())
-						{
-							WeakActorPtr.Get()->Destroy();
-						}
-					}
-					IngredientActorsInPot.Empty(); // Clear the tracking array
 
 					// Disable the cook button again
 					if (CookButton)

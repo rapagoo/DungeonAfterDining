@@ -52,10 +52,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory | Interaction")
 	void PlaceItemOnTable(int32 SlotIndex);
 
-	// Getter for the currently overlapping interactable table
-	UFUNCTION(BlueprintPure, Category = "Interaction")
-	AInteractableTable* GetCurrentInteractableTable() const { return CurrentInteractableTable; }
-
 protected:
 	//~ Begin APawn Interface.
 	virtual void PossessedBy(AController* NewController) override;

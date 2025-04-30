@@ -318,12 +318,9 @@ void AWarriorHeroCharacter::OnInteractionSphereEndOverlap(UPrimitiveComponent* O
     AInteractableTable* Table = Cast<AInteractableTable>(OtherActor);
     if (Table && Table == CurrentInteractableTable) // Check if the exiting actor is our current target
     {
-        UE_LOG(LogTemp, Warning, TEXT("OnInteractionSphereEndOverlap: Exiting range of CurrentInteractableTable '%s'. Clearing pointer. IsInCookingMode? %s"), 
-            *Table->GetName(),
-            bIsInCookingMode ? TEXT("Yes") : TEXT("No"));
         CurrentInteractableTable = nullptr;
         // TODO: Hide UI Prompt
-        // UE_LOG(LogTemp, Log, TEXT("Interactable table out of range: %s"), *Table->GetName()); // Original log
+        UE_LOG(LogTemp, Log, TEXT("Interactable table out of range: %s"), *Table->GetName());
     }
 }
 

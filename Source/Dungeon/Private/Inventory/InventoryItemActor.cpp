@@ -12,13 +12,12 @@
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
 #include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
 #include "PhysicsEngine/BodySetup.h" // Correct path for UBodySetup
-#include "Components/PrimitiveComponent.h" // For WakeAllRigidBodies
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
 {
- 	// Set this actor to call Tick() every frame. You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = false; // Disable tick again
+ 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	PrimaryActorTick.bCanEverTick = false; // Optimize: Disable tick if not needed
 
 	DefaultSceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
 	RootComponent = DefaultSceneRoot;
@@ -286,65 +285,60 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
         // --- Assign and Configure the NEW OtherHalf component ---
         OtherHalfProceduralMeshComponent = TempOtherHalf;
         if (!OtherHalfProceduralMeshComponent->GetAttachParent()) {
-             OtherHalfProceduralMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform); 
+             // Try KeepWorldTransform first, as SliceProceduralMesh might create the component in world space relative to the original
+             OtherHalfProceduralMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform); 
         }
-        OtherHalfProceduralMeshComponent->RegisterComponent();
+        OtherHalfProceduralMeshComponent->RegisterComponent(); // Ensure it's registered
         OtherHalfProceduralMeshComponent->SetVisibility(true);
 
-        // Explicitly set the relative location/rotation of the OtherHalf slightly offset from the primary one
-        FTransform PrimaryTransform = ProceduralMeshComponent->GetRelativeTransform();
-        FVector OffsetDirection = PlaneNormal * 5.0f; // Offset slightly along the cut normal
-        OtherHalfProceduralMeshComponent->SetRelativeLocation(PrimaryTransform.GetLocation() + OffsetDirection);
-        OtherHalfProceduralMeshComponent->SetRelativeRotation(PrimaryTransform.GetRotation());
-
-        // --- Configure Physics for the NEW OtherHalf component --- 
-        FName CollisionProfileName = FName("PhysicsActor"); // Ensure this profile allows simulation
+        // --- Configure Physics for the NEW OtherHalf component ---
+        FName CollisionProfileName = FName("PhysicsActor"); // Use the profile that simulates physics
         OtherHalfProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName);
-        OtherHalfProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled
-        // OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // Keep commented out for now
-        // UE_LOG for Collision Profile can be restored if needed
-        // OtherHalfProceduralMeshComponent->AddImpulse(...) // Keep commented
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set OtherHalf Collision Profile to '%s'. Current Profile: %s"),
+            *GetNameSafe(this),
+            *CollisionProfileName.ToString(),
+            *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString());
+
+        OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // Enable physics simulation
+        // Optional: Add impulse if needed
+        FVector ImpulseDirection = WorldPlaneNormal.GetSafeNormal(); // Use slice normal for direction
+        float ImpulseStrength = 100.0f; // Adjust as needed
+        OtherHalfProceduralMeshComponent->AddImpulse(ImpulseDirection * ImpulseStrength, NAME_None, true); // Push away from the cut
 
         // Log final state of OtherHalf
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: New OtherHalf State: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%s, Sections=%d"),
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: New OtherHalf State: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
                *GetNameSafe(this),
                OtherHalfProceduralMeshComponent->IsVisible(),
                OtherHalfProceduralMeshComponent->IsCollisionEnabled(),
                *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               OtherHalfProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), // Should log No
+               OtherHalfProceduralMeshComponent->IsSimulatingPhysics(),
                OtherHalfProceduralMeshComponent->GetNumSections());
 
 
-        // --- Re-configure Physics for the ORIGINAL PMC component ---        
+        // --- Re-configure Physics for the ORIGINAL PMC component ---
+        // Ensure the original part also uses the physics profile and simulates physics
         ProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName); // Match profile
-        ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled
-        // ProceduralMeshComponent->SetSimulatePhysics(true); // Keep commented out for now
-        // UE_LOG for Collision Profile can be restored if needed
-        // ProceduralMeshComponent->AddImpulse(...) // Keep commented
+         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set Original PMC Collision Profile to '%s' AFTER Slice. Current Profile: %s"),
+               *GetNameSafe(this),
+               *CollisionProfileName.ToString(),
+               *ProceduralMeshComponent->GetCollisionProfileName().ToString());
+
+        // **** THIS IS THE FIX for original part not simulating physics ****
+        ProceduralMeshComponent->SetSimulatePhysics(true); // <<<< RE-ENABLE PHYSICS
+        // ******************************************************************
+
+        // Add opposite impulse to the original part
+        ProceduralMeshComponent->AddImpulse(-ImpulseDirection * ImpulseStrength, NAME_None, true); // Push other way
 
         // Log final state of Original PMC
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Original PMC State After Slice: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%s, Sections=%d"),
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Original PMC State After Slice: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
                *GetNameSafe(this),
                ProceduralMeshComponent->IsVisible(),
                ProceduralMeshComponent->IsCollisionEnabled(),
                *ProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               ProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), // Should log No
-               ProceduralMeshComponent->GetNumSections());
+               ProceduralMeshComponent->IsSimulatingPhysics(),
+               ProceduralMeshComponent->GetNumSections()); // Log section count
 
-
-        // --- Re-attach components to root after slicing to ensure they follow the actor ---
-        USceneComponent* CurrentRoot = GetRootComponent();
-        if (CurrentRoot && ProceduralMeshComponent && ProceduralMeshComponent->GetAttachParent() != CurrentRoot)
-        {
-            ProceduralMeshComponent->AttachToComponent(CurrentRoot, FAttachmentTransformRules::KeepRelativeTransform);
-            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Re-attached Primary ProcMesh to root after slice."), *GetNameSafe(this));
-        }
-        if (CurrentRoot && OtherHalfProceduralMeshComponent && OtherHalfProceduralMeshComponent->GetAttachParent() != CurrentRoot)
-        {
-            OtherHalfProceduralMeshComponent->AttachToComponent(CurrentRoot, FAttachmentTransformRules::KeepRelativeTransform);
-            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Re-attached OtherHalf ProcMesh to root after slice."), *GetNameSafe(this));
-        }
-        // --- End Re-attachment ---
 
         // Mark as sliced
         bIsSliced = true;
@@ -382,64 +376,13 @@ void AInventoryItemActor::RequestEnablePhysics()
     }
 }
 
-void AInventoryItemActor::RequestPhysicsReenable()
-{
-    // Only request if the item is actually sliced (has proc meshes)
-    if (bIsSliced && (ProceduralMeshComponent || OtherHalfProceduralMeshComponent))
-    {
-        bNeedsPhysicsReenable = true;
-        // Ensure Tick is enabled to handle the request
-        if (!PrimaryActorTick.IsTickFunctionEnabled())
-        {
-            SetActorTickEnabled(true);
-        }
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Physics re-enable requested."), *GetNameSafe(this));
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Physics re-enable requested, but item is not sliced or has no proc meshes."), *GetNameSafe(this));
-    }
-}
-
 // Called every frame
 void AInventoryItemActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-    // Handle Physics Re-enable Request
-    if (bNeedsPhysicsReenable)
-    {
-        bNeedsPhysicsReenable = false; // Consume the flag
-
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Processing physics re-enable in Tick."), *GetNameSafe(this));
-        FName CollisionProfileName = FName("PhysicsActor"); 
-        TArray<UProceduralMeshComponent*> ProcMeshesToEnable;
-        GetComponents<UProceduralMeshComponent>(ProcMeshesToEnable);
-
-        bool bPhysicsWasEnabled = false;
-        for (UProceduralMeshComponent* MeshComp : ProcMeshesToEnable)
-        {
-            if (MeshComp)
-            {
-                UE_LOG(LogTemp, Log, TEXT("  - Enabling physics for component: %s"), *MeshComp->GetName());
-                MeshComp->SetCollisionProfileName(CollisionProfileName);
-                MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                MeshComp->SetSimulatePhysics(true);
-                MeshComp->WakeAllRigidBodies(); 
-                bPhysicsWasEnabled = true;
-            }
-        }
-
-        // Disable tick again if we don't need it for other pending requests (like the original bEnablePhysicsRequested)
-        if (!bEnablePhysicsRequested) 
-        {
-            SetActorTickEnabled(false);
-             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Disabling Tick after physics re-enable."), *GetNameSafe(this));
-        }
-    }
-
-	// Handle original physics enabling request (if Tick is enabled)
-	if (PrimaryActorTick.IsTickFunctionEnabled() && bEnablePhysicsRequested)
+	// Handle physics enabling request
+	if (bEnablePhysicsRequested)
 	{
 		bEnablePhysicsRequested = false; // Consume the request
 
@@ -480,12 +423,6 @@ void AInventoryItemActor::Tick(float DeltaTime)
                  UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Physics enable requested, but StaticMeshComponent already simulating."), *GetNameSafe(this));
             }
 		}
-
-        // Ensure tick is disabled afterwards if no other requests are pending
-        if (!bNeedsPhysicsReenable) 
-        {
-            SetActorTickEnabled(false);
-        }
 	}
 }
 // Set item data and update the mesh

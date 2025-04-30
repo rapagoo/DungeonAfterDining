@@ -77,11 +77,6 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Slicing", meta = (AllowPrivateAccess = "true"))
 	bool bIsSliced = false;
 
-private:
-	// Flag to request physics re-enable on the next tick
-	bool bNeedsPhysicsReenable = false;
-
-protected:
 	// Updates the procedural mesh component based on the Item data
 	void UpdateMeshFromData();
 
@@ -103,10 +98,6 @@ public:
 	// Allows external objects to set the item data for this actor and update visuals
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void SetItemData(const FSlotStruct& NewItem);
-
-	// Function to request enabling physics simulation (used after slicing or teleporting)
-	UFUNCTION(BlueprintCallable, Category = "Physics")
-	void RequestPhysicsReenable();
 
 	// Function to request physics enable on next tick
 	void RequestEnablePhysics();

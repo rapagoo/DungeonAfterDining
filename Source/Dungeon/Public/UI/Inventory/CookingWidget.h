@@ -8,13 +8,10 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Engine/DataTable.h"
-#include "Interactables/InteractableTable.h"
 #include "CookingWidget.generated.h"
 
 // Forward declaration for the item actor
 class AInventoryItemActor;
-// Forward declare table instead of including full header
-class AInteractableTable;
 
 /**
  * Widget for the cooking interface.
@@ -65,9 +62,5 @@ private:
 	/** List to keep track of the names (ItemIDs) of ingredients added */
 	UPROPERTY()
 	TArray<FName> AddedIngredientIDs;
-
-	/** List to keep track of the actual ingredient actors moved into the pot */
-	UPROPERTY()
-	TArray<TWeakObjectPtr<AInventoryItemActor>> IngredientActorsInPot;
 
 }; 
