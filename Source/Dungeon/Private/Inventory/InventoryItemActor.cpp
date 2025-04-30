@@ -36,8 +36,7 @@ AInventoryItemActor::AInventoryItemActor()
     ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // Initially no collision
 
     // Default CapMaterial might be null, can be set in Blueprint Defaults
-    CapMaterial = nullptr;
-    PotTargetMeshComponent = nullptr; // Initialize the new pointer
+    CapMaterial = nullptr; 
 
     // Default state is not sliced
     bIsSliced = false;
@@ -145,39 +144,33 @@ void AInventoryItemActor::UpdateMeshFromData()
         ProceduralMeshComponent->ClearAllMeshSections();
     }
 
-    // After copying/clearing, configure the Procedural Mesh Component
+    // After copying or clearing, ensure collision settings are suitable for physics
     if (ProceduralMeshComponent)
     {
-        ProceduralMeshComponent->SetVisibility(true); // Make procedural mesh visible from the start
-        
         UBodySetup* BodySetup = ProceduralMeshComponent->GetBodySetup();
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: GetBodySetup result: %s"), *GetNameSafe(this), BodySetup ? TEXT("Valid") : TEXT("NULL"));
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: GetBodySetup result: %s"), *GetNameSafe(this), BodySetup ? TEXT("Valid") : TEXT("NULL")); // Log BodySetup validity
         if (BodySetup)
         {
             BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseSimpleAsComplex;
-            // Use the profile for items placed in the world (before slicing/physics)
-            ProceduralMeshComponent->SetCollisionProfileName(FName("DroppedItem")); // Or another suitable profile?
-            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // Initially QueryOnly, enable physics later
+            // Use the new custom profile defined in Project Settings
+            ProceduralMeshComponent->SetCollisionProfileName(FName("DroppedItem")); // Use the new profile name
+            ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            // REMOVED: Channel responses are now handled by the "DroppedItem" profile
+            // ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); 
 
-            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Applied initial collision settings to ProcMesh (Profile: %s, Enabled: %s)"), 
+            // Log applied settings (Profile should now show "DroppedItem")
+            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Applied collision settings (Profile: %s, Enabled: %s)"), 
                 *GetNameSafe(this), 
                 *ProceduralMeshComponent->GetCollisionProfileName().ToString(), 
-                ProceduralMeshComponent->IsCollisionEnabled() ? TEXT("True") : TEXT("False"));
+                ProceduralMeshComponent->IsCollisionEnabled() ? TEXT("True") : TEXT("False")); // Log applied settings
 
+            // Mark collision state as dirty to apply changes
             ProceduralMeshComponent->MarkRenderStateDirty();
         }
         else
         {
              UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get BodySetup from ProceduralMeshComponent for collision setup."), *GetNameSafe(this));
         }
-    }
-    
-    // Hide the original static mesh component and disable its collision as it's no longer needed for visuals/interaction
-    if (StaticMeshComponent)
-    {
-        StaticMeshComponent->SetVisibility(false);
-        StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Hid StaticMeshComponent and disabled its collision after copying to ProcMesh."), *GetNameSafe(this));
     }
 }
 
@@ -197,21 +190,21 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
         return;
     }
 
-    // --- StaticMeshComponent should already be hidden/disabled by UpdateMeshFromData ---
-    // if (StaticMeshComponent && ProceduralMeshComponent->GetNumSections() > 0)
-    // {
-    //     StaticMeshComponent->SetVisibility(false);
-    //     StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    //     UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Hiding StaticMeshComponent."), *GetNameSafe(this));
-    // }
-    
-    // --- Ensure the primary PMC is visible and ready for slicing (should be set in UpdateMeshFromData) ---
-    // ProceduralMeshComponent->SetVisibility(true); // Already visible
-    // ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly); // Set collision profile before enabling physics later
-    // ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Block); // Ensure interaction trace works
+    // --- Hide StaticMeshComponent if it exists and PMC is being used ---
+    if (StaticMeshComponent && ProceduralMeshComponent->GetNumSections() > 0)
+    {
+        StaticMeshComponent->SetVisibility(false);
+        StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Hiding StaticMeshComponent."), *GetNameSafe(this));
+    }
+    // --- Ensure the primary PMC is visible and interactable before slicing ---
+    ProceduralMeshComponent->SetVisibility(true);
+    // ProceduralMeshComponent->SetCollisionProfileName(FName("PhysicsActor")); // Set later before physics
+    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Block);
 
     // Use world space plane position for slicing
-    FVector WorldPlanePosition = PlanePosition;
+    FVector WorldPlanePosition = PlanePosition; // Assuming trace hit location is already in world space
     FVector WorldPlaneNormal = PlaneNormal;     // Assuming trace hit normal is already in world space
 
     // --- Destroy the PREVIOUS OtherHalf component if it exists from a prior slice ---
@@ -308,7 +301,9 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
         FName CollisionProfileName = FName("PhysicsActor"); // Ensure this profile allows simulation
         OtherHalfProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName);
         OtherHalfProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled
-        OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // << RE-ENABLE PHYSICS
+        // OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // Keep commented out for now
+        // UE_LOG for Collision Profile can be restored if needed
+        // OtherHalfProceduralMeshComponent->AddImpulse(...) // Keep commented
 
         // Log final state of OtherHalf
         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: New OtherHalf State: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%s, Sections=%d"),
@@ -316,14 +311,16 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
                OtherHalfProceduralMeshComponent->IsVisible(),
                OtherHalfProceduralMeshComponent->IsCollisionEnabled(),
                *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               OtherHalfProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), 
+               OtherHalfProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), // Should log No
                OtherHalfProceduralMeshComponent->GetNumSections());
 
 
         // --- Re-configure Physics for the ORIGINAL PMC component ---        
         ProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName); // Match profile
         ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics); // Ensure collision is enabled
-        ProceduralMeshComponent->SetSimulatePhysics(true); // << RE-ENABLE PHYSICS
+        // ProceduralMeshComponent->SetSimulatePhysics(true); // Keep commented out for now
+        // UE_LOG for Collision Profile can be restored if needed
+        // ProceduralMeshComponent->AddImpulse(...) // Keep commented
 
         // Log final state of Original PMC
         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Original PMC State After Slice: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%s, Sections=%d"),
@@ -331,33 +328,26 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
                ProceduralMeshComponent->IsVisible(),
                ProceduralMeshComponent->IsCollisionEnabled(),
                *ProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               ProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), 
+               ProceduralMeshComponent->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"), // Should log No
                ProceduralMeshComponent->GetNumSections());
 
 
-        // --- Re-attach components to root after slicing AND enabling physics ---
+        // --- Re-attach components to root after slicing to ensure they follow the actor ---
         USceneComponent* CurrentRoot = GetRootComponent();
-        if (CurrentRoot && ProceduralMeshComponent) // Attach primary first
+        if (CurrentRoot && ProceduralMeshComponent && ProceduralMeshComponent->GetAttachParent() != CurrentRoot)
         {
             ProceduralMeshComponent->AttachToComponent(CurrentRoot, FAttachmentTransformRules::KeepRelativeTransform);
-            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Attached Primary ProcMesh to root after slice."), *GetNameSafe(this));
+            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Re-attached Primary ProcMesh to root after slice."), *GetNameSafe(this));
         }
-        if (CurrentRoot && OtherHalfProceduralMeshComponent) // Then attach other half
+        if (CurrentRoot && OtherHalfProceduralMeshComponent && OtherHalfProceduralMeshComponent->GetAttachParent() != CurrentRoot)
         {
             OtherHalfProceduralMeshComponent->AttachToComponent(CurrentRoot, FAttachmentTransformRules::KeepRelativeTransform);
-            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Attached OtherHalf ProcMesh to root after slice."), *GetNameSafe(this));
+            UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Re-attached OtherHalf ProcMesh to root after slice."), *GetNameSafe(this));
         }
         // --- End Re-attachment ---
 
         // Mark as sliced
         bIsSliced = true;
-
-        // --- Designate which component goes into the pot ---
-        // Example: Let's decide the OtherHalf goes into the pot
-        PotTargetMeshComponent = OtherHalfProceduralMeshComponent;
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Designated '%s' as PotTargetMeshComponent."), *GetNameSafe(this), *PotTargetMeshComponent->GetName());
-        // If you wanted the original piece to go in the pot instead:
-        // PotTargetMeshComponent = ProceduralMeshComponent;
     }
     else // Slice failed or created an empty component
     {
@@ -367,7 +357,6 @@ void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector&
             TempOtherHalf->DestroyComponent();
              UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Destroyed empty/invalid temporary OtherHalf component."), *GetNameSafe(this));
         }
-        PotTargetMeshComponent = nullptr; // Ensure it's null if slice fails
          // Re-enable physics on original component if it was disabled before the failed slice attempt
          if (bWasSimulatingPhysics)
          {

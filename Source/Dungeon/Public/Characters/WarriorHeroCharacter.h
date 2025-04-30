@@ -107,16 +107,20 @@ protected:
 
 	// Particle effect to play when slicing
 	// Marked as deprecated, replace with Niagara. No longer exposed to editor/blueprints.
-	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
-	// UParticleSystem* SliceEffect; // Removed UPROPERTY
+	UPROPERTY()
+	UParticleSystem* SliceParticleEffect_DEPRECATED;
 
-	// Niagara system for slicing effect
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
+	// Niagara effect to play when slicing
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
 	UNiagaraSystem* SliceNiagaraEffect;
 
+	// Scale for the Niagara slice effect
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
+	FVector SliceNiagaraScale = FVector(1.0f);
+
 	// Sound effect to play when slicing
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
-	USoundBase* SliceSound;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
+	USoundBase* SliceSoundEffect;
 
 private:
 
@@ -184,15 +188,4 @@ public:
 
 	// Return Inventory Component
 	UInventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
-
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	// Function to get the slicing start location (if available)
-	UFUNCTION(BlueprintPure, Category = "Slicing")
-	FVector GetSliceStartLocation() const { return SliceStartWorldLocation; }
-
-	// Function to get the slicing end location (if available)
-	UFUNCTION(BlueprintPure, Category = "Slicing")
-	FVector GetSliceEndLocation() const { return SliceEndWorldLocation; }
 };
