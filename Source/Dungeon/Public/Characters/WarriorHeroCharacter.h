@@ -20,6 +20,9 @@ class UHeroCombatComponent;
 class UHeroUIComponent;
 class UInventoryComponent;
 class AInventoryItemActor;
+class UParticleSystem;
+class USoundBase;
+class UNiagaraSystem;
 
 /**
  * 
@@ -97,6 +100,23 @@ protected:
 	// Pointer to the currently active cooking widget instance
 	UPROPERTY(Transient) // Use Transient as it's managed during gameplay
 	TWeakObjectPtr<UCookingWidget> CurrentCookingWidget;
+
+	// Particle effect to play when slicing
+	// Marked as deprecated, replace with Niagara. No longer exposed to editor/blueprints.
+	UPROPERTY()
+	UParticleSystem* SliceParticleEffect_DEPRECATED;
+
+	// Niagara effect to play when slicing
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
+	UNiagaraSystem* SliceNiagaraEffect;
+
+	// Scale for the Niagara slice effect
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
+	FVector SliceNiagaraScale = FVector(1.0f);
+
+	// Sound effect to play when slicing
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects | Cooking")
+	USoundBase* SliceSoundEffect;
 
 private:
 

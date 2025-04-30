@@ -32,6 +32,10 @@
 #include "WarriorDebugHelper.h"
 #include "UI/Inventory/CookingWidget.h" // Include the cooking widget header
 #include "Blueprint/UserWidget.h" // Needed for CreateWidget
+#include "Particles/ParticleSystem.h" // Added for UParticleSystem
+#include "Sound/SoundBase.h" // Added for USoundBase
+#include "NiagaraFunctionLibrary.h" // Added for Niagara SpawnSystem
+#include "NiagaraComponent.h" // Added for UNiagaraSystem type
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
@@ -619,18 +623,42 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
 {
     if (!ItemToSlice)
     {
-        // UE_LOG(LogTemp, Error, TEXT("PerformSlice called with null ItemToSlice.")); // 에러 로그는 유지하거나 필요에 따라 제거
         return;
     }
 
-    // UE_LOG(LogTemp, Log, TEXT("PerformSlice called for '%s'. Plane Position: %s, Plane Normal: %s. Calling ItemToSlice->SliceItem()..."), // 제거
-    //     *ItemToSlice->GetName(), // 제거
-    //     *PlanePosition.ToString(), // 제거
-    //     *PlaneNormal.ToString() // 제거
-    //     ); // 제거
-
     // Call the item's slicing function
     ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
+
+    // Check if the item was successfully marked as sliced after the attempt
+    if (ItemToSlice->IsSliced())
+    {
+        // Play slicing visual effect (Niagara) if assigned
+        if (SliceNiagaraEffect)
+        {
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SliceNiagaraEffect, PlanePosition, PlaneNormal.Rotation(), SliceNiagaraScale);
+        }
+        // Optional: Log if the deprecated particle system is still assigned
+        // else if (SliceParticleEffect_DEPRECATED)
+        // {
+        //     UE_LOG(LogTemp, Warning, TEXT("Slice effect: Using deprecated Cascade particle system. Please assign a Niagara system to SliceNiagaraEffect."));
+        //     UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), SliceParticleEffect_DEPRECATED, PlanePosition, PlaneNormal.Rotation());
+        // }
+
+        // Play slicing sound effect if assigned
+        if (SliceSoundEffect)
+        {
+            UGameplayStatics::PlaySoundAtLocation(GetWorld(), SliceSoundEffect, PlanePosition);
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("Slice successful for %s. Played effects (Niagara: %s, Sound: %s)."), 
+            *ItemToSlice->GetName(), 
+            SliceNiagaraEffect ? TEXT("Yes") : TEXT("No"), 
+            SliceSoundEffect ? TEXT("Yes") : TEXT("No"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Slice attempted for %s, but IsSliced() is still false."), *ItemToSlice->GetName());
+    }
 }
 
 // Implementation for placing an item from the inventory onto the interactable table
