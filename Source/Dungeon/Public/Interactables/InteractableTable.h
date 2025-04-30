@@ -31,8 +31,12 @@ protected:
 	ACameraActor* CookingCameraActor;
 
 	// Area on the table where ingredients can be placed and detected
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Cooking") // Changed to BP ReadWrite
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Cooking")
 	UBoxComponent* IngredientArea;
+
+	// Scene component representing the location inside the pot where ingredients should go
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Cooking", meta = (AllowPrivateAccess = "true"))
+	USceneComponent* PotLocationComponent;
 
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -48,6 +52,10 @@ public:
 	// Getter for the cooking camera
 	UFUNCTION(BlueprintPure, Category = "Cooking")
 	ACameraActor* GetCookingCamera() const { return CookingCameraActor; }
+
+	// Getter for the pot location component
+	UFUNCTION(BlueprintPure, Category = "Cooking")
+	USceneComponent* GetPotLocationComponent() const { return PotLocationComponent; }
 
 	// Setter for the active cooking widget
 	UFUNCTION(BlueprintCallable, Category = "Cooking")

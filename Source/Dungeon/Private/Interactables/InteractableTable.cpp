@@ -27,6 +27,12 @@ AInteractableTable::AInteractableTable()
 	IngredientArea->SetCollisionProfileName(FName("OverlapAllDynamic")); // Set collision to overlap dynamic objects
 	IngredientArea->SetHiddenInGame(false); // Make visible for debugging initially
 
+	// Create the pot location component
+	PotLocationComponent = CreateDefaultSubobject<USceneComponent>(TEXT("PotLocation"));
+	PotLocationComponent->SetupAttachment(RootComponent);
+	// Initial relative location, adjust in BP to be inside the pot mesh
+	PotLocationComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f));
+
 	// Set the collision profile for the root component to the custom preset
 	// Make sure "InteractableObject" matches the preset name created in Project Settings!
 	if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(RootComponent))
