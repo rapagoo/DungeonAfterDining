@@ -5,12 +5,18 @@
 #include "Components/Button.h" // Include for UButton
 #include "Components/VerticalBox.h" // Include for UVerticalBox
 #include "Components/TextBlock.h" // Include for UTextBlock (Example for adding items later)
+#include "Components/BoxComponent.h" // Needed for IngredientArea detection
 #include "Inventory/InventoryItemActor.h" // Include the item actor class
 #include "Inventory/SlotStruct.h" // Needed for FSlotStruct
 #include "Inventory/CookingRecipeStruct.h" // Include recipe struct
 #include "Engine/DataTable.h" // Ensure DataTable is included
 #include "Characters/WarriorHeroCharacter.h" // Include character to get inventory
 #include "Inventory/InventoryComponent.h" // Include inventory component
+#include "Blueprint/UserWidget.h" // Needed for CreateWidget (if creating ingredient entries)
+#include "Interactables/InteractableTable.h"
+#include "InteractablePot.h" // Include the Pot header
+#include "Kismet/GameplayStatics.h" // Include if getting player character/inventory
+#include "Inventory/InvenItemStruct.h" // Include the item definition struct header (Adjust path if needed)
 
 void UCookingWidget::NativeConstruct()
 {
@@ -20,27 +26,31 @@ void UCookingWidget::NativeConstruct()
 	if (AddIngredientButton)
 	{
 		AddIngredientButton->OnClicked.AddDynamic(this, &UCookingWidget::OnAddIngredientClicked);
-		// Start disabled, enabled by UpdateNearbyIngredient
 		AddIngredientButton->SetIsEnabled(false);
 	}
 	if (CookButton)
 	{
 		CookButton->OnClicked.AddDynamic(this, &UCookingWidget::OnCookClicked);
-		// Initially disable the cook button until valid ingredients are added
-		CookButton->SetIsEnabled(false);
+		CookButton->SetIsEnabled(true); // Cook button might be enabled by default, Pot checks ingredients
 	}
 
 	NearbyIngredient = nullptr;
-	AddedIngredientIDs.Empty(); // Initialize the array
+
+	// Clear any existing ingredients in the UI list on construct
+	if (IngredientsList)
+	{
+		IngredientsList->ClearChildren();
+	}
 }
 
 void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
 {
 	bool bShouldEnableButton = false;
-	if (ItemActor && ItemActor->IsSliced()) // Check if the item actor is valid AND sliced
+	if (ItemActor && ItemActor->IsSliced())
 	{
 		NearbyIngredient = ItemActor;
 		bShouldEnableButton = true;
+		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby sliced item: %s"), *ItemActor->GetName());
 	}
 	else
 	{
@@ -55,163 +65,265 @@ void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
 
 void UCookingWidget::OnAddIngredientClicked()
 {
-	// Check if we have a valid, sliced ingredient actor nearby
+	UE_LOG(LogTemp, Log, TEXT("Add Ingredient button clicked (Attempting to add SLICED version of nearby item to inventory)"));
 	if (NearbyIngredient.IsValid() && NearbyIngredient->IsSliced())
 	{
-		AInventoryItemActor* IngredientToAdd = NearbyIngredient.Get();
-		FSlotStruct IngredientData = IngredientToAdd->GetItemData();
-		FName IngredientID = IngredientData.ItemID.RowName; // Get Item ID as FName
+		AInventoryItemActor* IngredientActor = NearbyIngredient.Get(); // Renamed for clarity
 
-		UE_LOG(LogTemp, Warning, TEXT("Adding Ingredient ID: %s"), *IngredientID.ToString());
+		// Get Player Character and Inventory Component
+		AWarriorHeroCharacter* PlayerCharacter = Cast<AWarriorHeroCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
+		if (!PlayerCharacter) { /* Error Log + return */ UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: No Player Character.")); return; }
+		UInventoryComponent* PlayerInventory = PlayerCharacter->GetInventoryComponent();
+		if (!PlayerInventory) { /* Error Log + return */ UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: No Player Inventory.")); return; }
 
-		// Add the ingredient ID to our internal list
-		AddedIngredientIDs.Add(IngredientID);
+		// Get the original item data handle from the actor
+		FSlotStruct OriginalSlotData = IngredientActor->GetItemData();
+		FDataTableRowHandle OriginalItemIDHandle = OriginalSlotData.ItemID;
 
-		// Update the UI list
-		if (IngredientsList)
+		// Validate the handle and DataTable pointer
+		if (!OriginalItemIDHandle.DataTable || OriginalItemIDHandle.RowName.IsNone())
 		{
-			UTextBlock* NewIngredientText = NewObject<UTextBlock>(this);
-			if (NewIngredientText)
+			UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: Nearby item actor '%s' has invalid ItemID handle (DataTable or RowName missing)."), *IngredientActor->GetName());
+            NearbyIngredient = nullptr;
+            if(AddIngredientButton) AddIngredientButton->SetIsEnabled(false);
+			return;
+		}
+
+		// Find the item definition in the DataTable
+		FInventoryItemStruct* ItemDefinition = OriginalItemIDHandle.DataTable->FindRow<FInventoryItemStruct>(OriginalItemIDHandle.RowName, TEXT("OnAddIngredientClicked Context"));
+
+		if (!ItemDefinition)
+		{
+			UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: Could not find Item Definition for '%s' in DataTable '%s'."), *OriginalItemIDHandle.RowName.ToString(), *OriginalItemIDHandle.DataTable->GetName());
+            NearbyIngredient = nullptr;
+            if(AddIngredientButton) AddIngredientButton->SetIsEnabled(false);
+			return;
+		}
+
+        // --- Check for and use the SlicedItemID ---
+        FName ItemIDToAdd = NAME_None;
+        // Assuming the field name is SlicedItemID. Adjust if different.
+        if (ItemDefinition->SlicedItemID != NAME_None)
+        {
+            ItemIDToAdd = ItemDefinition->SlicedItemID;
+            UE_LOG(LogTemp, Log, TEXT("Found SlicedItemID '%s' for original item '%s'."), *ItemIDToAdd.ToString(), *OriginalItemIDHandle.RowName.ToString());
+        }
+        else
+        {
+            // Fallback or Error? Decide behavior if SlicedItemID is not defined.
+            // Option 1: Log error and do nothing
+            UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: Original item '%s' does not have a valid SlicedItemID defined in its data table row. Cannot add sliced version."), *OriginalItemIDHandle.RowName.ToString());
+            // Option 2: Add the original item back (might be confusing)
+            // ItemIDToAdd = OriginalItemIDHandle.RowName;
+            // UE_LOG(LogTemp, Warning, TEXT("OnAddIngredientClicked: SlicedItemID not found for '%s'. Adding original item ID instead."), *OriginalItemIDHandle.RowName.ToString());
+
+            // For now, let's prevent adding anything if SlicedItemID is missing
+            NearbyIngredient = nullptr;
+            if(AddIngredientButton) AddIngredientButton->SetIsEnabled(false);
+            return;
+        }
+
+        // Create the FSlotStruct for the item to add to inventory
+        FSlotStruct ItemDataToAdd;
+        ItemDataToAdd.ItemID.RowName = ItemIDToAdd;
+        ItemDataToAdd.Quantity = 1;
+        // Assume the sliced item uses the same DataTable. If not, ItemDefinition needs to specify it.
+        ItemDataToAdd.ItemID.DataTable = OriginalItemIDHandle.DataTable;
+
+		UE_LOG(LogTemp, Log, TEXT("Attempting to add SLICED item '%s' to player inventory."), *ItemIDToAdd.ToString());
+
+		// Attempt to add the item back to the player's inventory
+		if (PlayerInventory->AddItem(ItemDataToAdd))
+		{
+			UE_LOG(LogTemp, Log, TEXT("Successfully added SLICED item '%s' to inventory from nearby actor %s."), *ItemIDToAdd.ToString(), *IngredientActor->GetName());
+
+			// Destroy the original actor in the world
+			IngredientActor->Destroy();
+
+			// Clear the nearby ingredient pointer and disable the button
+			NearbyIngredient = nullptr;
+			if (AddIngredientButton)
 			{
-				// Ideally, get a display name from ItemData table here
-				NewIngredientText->SetText(FText::FromName(IngredientID)); // Use FText::FromName
-				IngredientsList->AddChildToVerticalBox(NewIngredientText);
+				AddIngredientButton->SetIsEnabled(false);
 			}
 		}
-
-		// Destroy the actor in the world
-		IngredientToAdd->Destroy();
-
-		// Clear the nearby ingredient pointer and disable the button
-		NearbyIngredient = nullptr;
-		if (AddIngredientButton)
+		else
 		{
-			AddIngredientButton->SetIsEnabled(false);
-		}
-
-		// Check if the current ingredients match a recipe
-		FName TempResultID;
-		bool bRecipeFound = CheckRecipe(TempResultID);
-		if (CookButton)
-		{
-			CookButton->SetIsEnabled(bRecipeFound);
+			UE_LOG(LogTemp, Warning, TEXT("Failed to add SLICED item '%s' to player inventory (Inventory might be full?). Actor '%s' remains."), *ItemIDToAdd.ToString(), *IngredientActor->GetName());
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Add Ingredient Clicked, but NearbyIngredient is not valid or not sliced."));
+		UE_LOG(LogTemp, Warning, TEXT("Add Ingredient Clicked, but NearbyIngredient is not valid or not sliced. Stored pointer: %s"), NearbyIngredient.IsValid() ? *NearbyIngredient->GetName() : TEXT("Invalid"));
+        if (AddIngredientButton)
+		{
+			AddIngredientButton->SetIsEnabled(false);
+		}
 	}
 }
 
 void UCookingWidget::OnCookClicked()
 {
-	FName ResultItemID;
-	if (CheckRecipe(ResultItemID))
+	UE_LOG(LogTemp, Log, TEXT("Cook Button Clicked!"));
+
+	UE_LOG(LogTemp, Log, TEXT("[OnCookClicked] Checking AssociatedInteractable: %s"), AssociatedInteractable ? *AssociatedInteractable->GetName() : TEXT("nullptr"));
+
+	if (AssociatedInteractable)
 	{
-		UE_LOG(LogTemp, Log, TEXT("Cook button clicked. Valid recipe found for result: %s"), *ResultItemID.ToString());
-
-		// Get Player Character and Inventory Component
-		APawn* OwningPawn = GetOwningPlayerPawn();
-		AWarriorHeroCharacter* PlayerCharacter = Cast<AWarriorHeroCharacter>(OwningPawn);
-		if (PlayerCharacter)
+		AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+		if (Pot)
 		{
-			UInventoryComponent* PlayerInventory = PlayerCharacter->GetInventoryComponent();
-			if (PlayerInventory)
-			{
-				// Attempt to add the resulting item to the inventory
-				FSlotStruct ResultItemData;
-				ResultItemData.ItemID.RowName = ResultItemID;
-				ResultItemData.Quantity = 1;
-
-				if (PlayerInventory->AddItem(ResultItemData))
-				{
-					UE_LOG(LogTemp, Log, TEXT("Successfully added cooked item '%s' to inventory."), *ResultItemID.ToString());
-
-					// Clear the internal list and UI
-					AddedIngredientIDs.Empty();
-					if (IngredientsList)
-					{
-						IngredientsList->ClearChildren();
-					}
-
-					// Disable the cook button again
-					if (CookButton)
-					{
-						CookButton->SetIsEnabled(false);
-					}
-
-					// TODO: Play success animation/sound
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("Failed to add cooked item '%s' to inventory (Inventory might be full?). Cooking aborted, ingredients remain."), *ResultItemID.ToString());
-					// Optionally provide feedback to the player that inventory is full
-				}
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("CookClicked: Could not get InventoryComponent from PlayerCharacter."));
-			}
+			UE_LOG(LogTemp, Log, TEXT("Attempting to start cooking on Pot: %s"), *Pot->GetName());
+			Pot->StartCooking();
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("CookClicked: Could not get Owning Player Character."));
+			UE_LOG(LogTemp, Warning, TEXT("Cook Button Clicked, but AssociatedInteractable is not an AInteractablePot."));
 		}
 	}
 	else
 	{
-		// This case should ideally not happen if the button is disabled correctly
-		UE_LOG(LogTemp, Warning, TEXT("Cook button clicked, but no valid recipe found for current ingredients."));
-		if (CookButton)
-		{
-			CookButton->SetIsEnabled(false);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("Cook Button Clicked, but AssociatedInteractable is null."));
 	}
 }
 
-bool UCookingWidget::CheckRecipe(FName& OutResultItemID) const
+void UCookingWidget::UpdateIngredientList(const TArray<FName>& IngredientIDs)
 {
-	if (!RecipeDataTable)
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateIngredientList called with %d ingredients."), IngredientIDs.Num());
+
+	if (IngredientsList)
 	{
-		UE_LOG(LogTemp, Error, TEXT("CheckRecipe: RecipeDataTable is not set!"));
-		return false;
+		IngredientsList->ClearChildren();
+
+		for (const FName& IngredientID : IngredientIDs)
+		{
+			UE_LOG(LogTemp, Log, TEXT("  - Adding UI entry for: %s"), *IngredientID.ToString());
+			UE_LOG(LogTemp, Warning, TEXT("Actual UI creation for ingredient '%s' needs implementation (using WidgetTree or BP)."), *IngredientID.ToString());
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::UpdateIngredientList - IngredientsList is not bound or null."));
+	}
+}
+
+void UCookingWidget::SetAssociatedTable(AInteractableTable* Table)
+{
+	UE_LOG(LogTemp, Log, TEXT("[SetAssociatedTable] Setting AssociatedInteractable to: %s"), Table ? *Table->GetName() : TEXT("nullptr"));
+
+	AssociatedInteractable = Table;
+
+	AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+	if (Pot)
+	{
+		UpdateIngredientList(Pot->GetAddedIngredientIDs());
+	}
+	else
+	{
+		UpdateIngredientList({});
+	}
+	UpdateNearbyIngredient(FindNearbySlicedIngredient());
+}
+
+AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
+{
+	if (!AssociatedInteractable)
+	{
+		return nullptr;
 	}
 
-	// Get all recipe row names
-	TArray<FName> RecipeRowNames = RecipeDataTable->GetRowNames();
-
-	for (const FName& RowName : RecipeRowNames)
+	UBoxComponent* DetectionArea = AssociatedInteractable->FindComponentByClass<UBoxComponent>();
+	if(!DetectionArea)
 	{
-		FCookingRecipeStruct* Recipe = RecipeDataTable->FindRow<FCookingRecipeStruct>(RowName, TEXT("CheckRecipe Context"));
-		if (Recipe)
-		{
-			// Check if the number of ingredients matches first
-			if (Recipe->RequiredIngredients.Num() == AddedIngredientIDs.Num())
-			{
-				// Check if all ingredients match exactly (order matters)
-				bool bMatch = true;
-				for (int32 i = 0; i < AddedIngredientIDs.Num(); ++i)
-				{
-					if (AddedIngredientIDs[i] != Recipe->RequiredIngredients[i])
-					{
-						bMatch = false;
-						break;
-					}
-				}
+		DetectionArea = Cast<UBoxComponent>(AssociatedInteractable->GetDefaultSubobjectByName(FName("IngredientArea")));
+	}
 
-				if (bMatch)
-				{
-					// Found a matching recipe
-					OutResultItemID = Recipe->ResultItem;
-					UE_LOG(LogTemp, Log, TEXT("CheckRecipe: Found matching recipe '%s' for result '%s'"), *RowName.ToString(), *OutResultItemID.ToString());
-					return true;
-				}
-			}
+	if (!DetectionArea)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FindNearbySlicedIngredient: Could not find a suitable BoxComponent (like 'IngredientArea') on %s."), *AssociatedInteractable->GetName());
+		return nullptr;
+	}
+
+	TArray<AActor*> OverlappingActors;
+	DetectionArea->GetOverlappingActors(OverlappingActors, AInventoryItemActor::StaticClass());
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		AInventoryItemActor* ItemActor = Cast<AInventoryItemActor>(Actor);
+		if (ItemActor && ItemActor->IsSliced())
+		{
+			UE_LOG(LogTemp, Log, TEXT("FindNearbySlicedIngredient: Found valid sliced item: %s"), *ItemActor->GetName());
+			return ItemActor;
 		}
 	}
 
-	// No matching recipe found
-	OutResultItemID = NAME_None;
-	// UE_LOG(LogTemp, Log, TEXT("CheckRecipe: No matching recipe found for current ingredients.")); // Optional: Reduce log spam
-	return false;
-} 
+	return nullptr;
+}
+
+/* // DEPRECATED: Add ingredient logic handled by Pot
+void UCookingWidget::AddIngredient(FName IngredientID)
+{
+	// This function might not be needed if AInteractablePot directly manages
+	// the ingredients and calls UpdateIngredientList.
+	// Keeping it for now in case old logic relies on it.
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::AddIngredient called for %s (potentially deprecated)"), *IngredientID.ToString());
+	// AddedIngredientIDs.AddUnique(IngredientID); // Example: Add to internal list
+	// UpdateIngredientList(AddedIngredientIDs); // Update UI
+}
+*/
+
+/* // DEPRECATED: Recipe Check logic handled by Pot
+FName UCookingWidget::CheckRecipe()
+{
+	// This logic should ideally live entirely within AInteractablePot::CheckRecipeInternal
+	// This implementation is kept as a placeholder based on the original header.
+	UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::CheckRecipe called - This logic should be handled by AInteractablePot."));
+
+	if (!RecipeDataTable || AddedIngredientIDs.Num() == 0)
+	{
+		return NAME_None;
+	}
+	TArray<FName> SortedCurrentIngredients = AddedIngredientIDs;
+	SortedCurrentIngredients.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
+
+	const TArray<FName> RowNames = RecipeDataTable->GetRowNames();
+	for (const FName& RowName : RowNames)
+	{
+		FCookingRecipeStruct* RecipeRow = RecipeDataTable->FindRow<FCookingRecipeStruct>(RowName, TEXT("WidgetCheckRecipe"));
+		if (RecipeRow && RecipeRow->InputIngredients.Num() == SortedCurrentIngredients.Num()) // ERROR: InputIngredients undefined here
+		{
+			TArray<FName> SortedRecipeIngredients = RecipeRow->InputIngredients; // ERROR: InputIngredients undefined here
+			SortedRecipeIngredients.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
+			if (SortedCurrentIngredients == SortedRecipeIngredients)
+			{
+				return RecipeRow->OutputItemID; // ERROR: OutputItemID undefined here
+			}
+		}
+	}
+	return NAME_None;
+}
+*/
+
+/* // DEPRECATED: Find ingredient logic handled by Character interaction
+AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
+{
+	// This logic is likely replaced by the character directly interacting with the pot.
+	UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::FindNearbySlicedIngredient called (DEPRECATED)"));
+	if (!AssociatedInteractable) return nullptr; // ERROR: AssociatedInteractable undefined here
+
+	TArray<AActor*> OverlappingActors;
+	// Need a component on the table (like IngredientArea in the original description) to get overlaps
+	// AssociatedTable->IngredientArea->GetOverlappingActors(OverlappingActors, AInventoryItemActor::StaticClass()); // Example
+
+	for (AActor* Actor : OverlappingActors)
+	{
+		AInventoryItemActor* Item = Cast<AInventoryItemActor>(Actor);
+		// Check if item is valid and sliced (assuming IsSliced exists)
+		if (Item && Item->IsSliced())
+		{
+			return Item; // Return the first sliced item found
+		}
+	}
+	return nullptr;
+}
+*/ 

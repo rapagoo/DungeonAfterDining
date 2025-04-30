@@ -53,6 +53,8 @@ void AInteractableTable::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// --- DEPRECATED: Table no longer directly updates widget based on nearby items --- 
+	/*
 	// Only perform check if the cooking widget is active
 	if (ActiveCookingWidget.IsValid() && IngredientArea)
 	{
@@ -73,6 +75,7 @@ void AInteractableTable::Tick(float DeltaTime)
 		// Update the cooking widget with the found ingredient (or nullptr if none found)
 		ActiveCookingWidget->UpdateNearbyIngredient(FoundSlicedIngredient);
 	}
+	*/
 }
 
 // Setter for the active cooking widget
@@ -81,6 +84,7 @@ void AInteractableTable::SetActiveCookingWidget(UCookingWidget* Widget)
 	ActiveCookingWidget = Widget;
 
 	// Optional: Immediately update the ingredient state when the widget is set
+	/* // DEPRECATED: Nearby ingredient logic removed from widget
 	if (Widget == nullptr && ActiveCookingWidget.IsValid())
 	{
 		// If the widget is being explicitly cleared, ensure the button is disabled
@@ -88,10 +92,8 @@ void AInteractableTable::SetActiveCookingWidget(UCookingWidget* Widget)
 	}
     else if (Widget != nullptr)
     {   // If a valid widget is set, trigger an immediate check/update
-        // This ensures the button state is correct right when the widget opens.
-        // We can manually call Tick logic here or rely on the next Tick.
-        // For simplicity, relying on the next Tick().
-        // To force immediate update: copy/refactor the Tick logic here.
+        // ...
     }
+	*/
 }
 

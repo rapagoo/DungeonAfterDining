@@ -36,6 +36,7 @@
 #include "Sound/SoundBase.h" // Added for USoundBase
 #include "NiagaraFunctionLibrary.h" // Added for Niagara SpawnSystem
 #include "NiagaraComponent.h" // Added for UNiagaraSystem type
+#include "InteractablePot.h" // Needed for casting to AInteractablePot
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
@@ -340,13 +341,22 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
         // Exit Cooking Mode
         UE_LOG(LogTemp, Log, TEXT("Exiting Cooking Mode..."));
 
-        // Remove and clean up the cooking widget
         if (CurrentCookingWidget.IsValid())
         {
             CurrentCookingWidget->RemoveFromParent();
-            if (CurrentInteractableTable) // Ensure table still exists
+            if (CurrentInteractableTable) 
             {
-                CurrentInteractableTable->SetActiveCookingWidget(nullptr);
+                AInteractablePot* Pot = Cast<AInteractablePot>(CurrentInteractableTable);
+                if (Pot)
+                {
+                    Pot->SetCookingWidget(nullptr); // Use setter
+                    UE_LOG(LogTemp, Log, TEXT("Cleared CookingWidgetRef on Pot %s"), *Pot->GetName());
+                }
+                else
+                {
+                    CurrentInteractableTable->SetActiveCookingWidget(nullptr);
+                    UE_LOG(LogTemp, Log, TEXT("Cleared ActiveCookingWidget on Table %s"), *CurrentInteractableTable->GetName());
+                }
             }
             CurrentCookingWidget = nullptr;
         }
@@ -374,7 +384,7 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
             ACameraActor* CookingCamera = CurrentInteractableTable->GetCookingCamera();
             if (CookingCamera)
             {
-                UE_LOG(LogTemp, Log, TEXT("Entering Cooking Mode... Target Table: %s, Camera: %s"), *CurrentInteractableTable->GetName(), *CookingCamera->GetName());
+                UE_LOG(LogTemp, Log, TEXT("Entering Cooking Mode... Target: %s, Camera: %s"), *CurrentInteractableTable->GetName(), *CookingCamera->GetName());
                 // Add Cooking Input Mapping Context if it's valid
                 if (CookingMappingContext)
                 {
@@ -382,7 +392,7 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Warning, TEXT("CookingMappingContext is not set in Character Defaults. Cooking input might not work."));
+                    UE_LOG(LogTemp, Warning, TEXT("CookingMappingContext is not set. Cooking input might not work."));
                 }
 
                 PlayerController->SetViewTargetWithBlend(CookingCamera, 0.5f); // Blend to table camera
@@ -403,27 +413,48 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
                     if (NewWidget)
                     {
                         NewWidget->AddToViewport();
-                        CurrentInteractableTable->SetActiveCookingWidget(NewWidget); // Link widget to table
-                        CurrentCookingWidget = NewWidget; // Store reference
+                        CurrentCookingWidget = NewWidget; 
+
+                        AInteractablePot* Pot = Cast<AInteractablePot>(CurrentInteractableTable);
+                        if (Pot)
+                        {
+                            Pot->SetCookingWidget(NewWidget); // Use setter
+                            UE_LOG(LogTemp, Log, TEXT("Set CookingWidgetRef on Pot %s"), *Pot->GetName());
+                            
+                            NewWidget->SetAssociatedTable(Pot); // Associate the widget with the Pot
+                            
+                            Pot->NotifyWidgetUpdate(); // Immediately update widget with pot contents
+                        }
+                        else
+                        {
+                            CurrentInteractableTable->SetActiveCookingWidget(NewWidget);
+                            UE_LOG(LogTemp, Log, TEXT("Set ActiveCookingWidget on Table %s"), *CurrentInteractableTable->GetName());
+                            // Also associate widget with the table for potential table-specific UI updates
+                            NewWidget->SetAssociatedTable(CurrentInteractableTable); 
+                        }
                     }
                     else
                     {
                         UE_LOG(LogTemp, Error, TEXT("Failed to create Cooking Widget instance."));
+                         bIsInCookingMode = false; // Failed to enter mode properly
+                         // Revert input mode etc. if widget creation fails?
                     }
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Error, TEXT("CookingWidgetClass is not set in Character Defaults. Cannot create cooking UI."));
+                    UE_LOG(LogTemp, Error, TEXT("CookingWidgetClass is not set. Cannot create cooking UI."));
+                    bIsInCookingMode = false; // Failed to enter mode properly
+                    // Revert input mode etc.?
                 }
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("Cannot enter cooking mode: Table '%s' has no CookingCamera assigned."), *CurrentInteractableTable->GetName());
+                UE_LOG(LogTemp, Warning, TEXT("Cannot enter cooking mode: Table/Pot '%s' has no CookingCamera assigned."), *CurrentInteractableTable->GetName());
             }
         }
         else
         {
-            UE_LOG(LogTemp, Log, TEXT("ToggleCookingMode pressed, but no interactable table in range."));
+            UE_LOG(LogTemp, Log, TEXT("ToggleCookingMode pressed, but no interactable table/pot in range."));
         }
     }
 }
@@ -637,23 +668,29 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
         {
             UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SliceNiagaraEffect, PlanePosition, PlaneNormal.Rotation(), SliceNiagaraScale);
         }
-        // Optional: Log if the deprecated particle system is still assigned
-        // else if (SliceParticleEffect_DEPRECATED)
-        // {
-        //     UE_LOG(LogTemp, Warning, TEXT("Slice effect: Using deprecated Cascade particle system. Please assign a Niagara system to SliceNiagaraEffect."));
-        //     UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), SliceParticleEffect_DEPRECATED, PlanePosition, PlaneNormal.Rotation());
-        // }
-
         // Play slicing sound effect if assigned
         if (SliceSoundEffect)
         {
             UGameplayStatics::PlaySoundAtLocation(GetWorld(), SliceSoundEffect, PlanePosition);
         }
 
-        UE_LOG(LogTemp, Log, TEXT("Slice successful for %s. Played effects (Niagara: %s, Sound: %s)."), 
-            *ItemToSlice->GetName(), 
-            SliceNiagaraEffect ? TEXT("Yes") : TEXT("No"), 
+        UE_LOG(LogTemp, Log, TEXT("Slice successful for %s. Played effects (Niagara: %s, Sound: %s)."),
+            *ItemToSlice->GetName(),
+            SliceNiagaraEffect ? TEXT("Yes") : TEXT("No"),
             SliceSoundEffect ? TEXT("Yes") : TEXT("No"));
+
+        // ***** 중요: 이 부분 추가 *****
+        // If we are currently in cooking mode and the widget is open,
+        // tell the widget to re-check for nearby sliced items immediately.
+        if (bIsInCookingMode && CurrentCookingWidget.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("PerformSlice: Item sliced while cooking widget is open. Triggering nearby ingredient update."));
+            // We assume the widget's FindNearbySlicedIngredient can find the item we just sliced
+            // based on its associated table/pot.
+            CurrentCookingWidget->UpdateNearbyIngredient(CurrentCookingWidget->FindNearbySlicedIngredient());
+        }
+        // ***** 중요: 이 부분 추가 *****
+
     }
     else
     {
@@ -661,28 +698,22 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
     }
 }
 
-// Implementation for placing an item from the inventory onto the interactable table
+// Implementation for placing an item from the inventory onto the interactable table/pot
 void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 {
-	// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Function called for SlotIndex %d."), SlotIndex); // 제거
-
 	// 1. Validate necessary components and state
 	if (!InventoryComponent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] InventoryComponent is null."));
 		return;
 	}
-	if (!CurrentInteractableTable)
+	if (!CurrentInteractableTable) // CurrentInteractableTable could be a table OR a pot now
 	{
-		// UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] CurrentInteractableTable is null. Cannot place item.")); // 에러 로그는 유지하거나 필요에 따라 제거
+		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] CurrentInteractableTable is null. Cannot place item."));
 		return;
 	}
-	if (!DefaultItemActorClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] DefaultItemActorClass is not set in Character Defaults. Cannot spawn item actor."));
-		return;
-	}
-    // Check if SlotIndex is valid directly against the component's array
+    // DefaultItemActorClass check is only needed if spawning an actor (i.e., not a pot)
+	// Check if SlotIndex is valid directly against the component's array
 	if (!InventoryComponent->InventorySlots.IsValidIndex(SlotIndex))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Invalid SlotIndex: %d"), SlotIndex);
@@ -695,60 +726,90 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 	// 3. Check if the slot is actually occupied
 	if (ItemDataToPlace.ItemID.RowName.IsNone() || ItemDataToPlace.Quantity <= 0)
 	{
-		// UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Slot %d is empty. Cannot place."), SlotIndex); // 경고 로그는 유지하거나 필요에 따라 제거
+		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Slot %d is empty. Cannot place."), SlotIndex);
 		return;
 	}
+
+    // Check if the interactable is a Pot
+    AInteractablePot* Pot = Cast<AInteractablePot>(CurrentInteractableTable);
 
 	// 4. Attempt to remove ONE item from the inventory slot
 	if (InventoryComponent->RemoveItemFromSlot(SlotIndex, 1))
 	{
-		// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully removed 1 item from slot %d."), SlotIndex); // 제거
+        // If it's a pot, add the ingredient directly
+        if (Pot)
+        {
+            if (Pot->AddIngredient(ItemDataToPlace.ItemID.RowName))
+            {
+                UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Added ingredient '%s' to Pot '%s' from slot %d."), *ItemDataToPlace.ItemID.RowName.ToString(), *Pot->GetName(), SlotIndex);
+                // Play "drop in pot" sound/effect?
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to add ingredient '%s' to Pot '%s'."), *ItemDataToPlace.ItemID.RowName.ToString(), *Pot->GetName());
+                // Optionally: Give the item back to the player if adding fails?
+                // InventoryComponent->AddItemToInventory(ItemDataToPlace.ItemID.RowName, 1); // Example: Needs proper function call
+            }
+            return; // Stop here for pots, no actor spawning needed
+        }
+        // If it's not a pot (presumably a regular table), spawn the item actor
+        else
+        {
+             // Check DefaultItemActorClass only if we are going to spawn
+             if (!DefaultItemActorClass)
+             {
+                 UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] DefaultItemActorClass is not set. Cannot spawn item actor on table."));
+                 // Give the item back since we failed to spawn its actor
+                 // InventoryComponent->AddItemToInventory(ItemDataToPlace.ItemID.RowName, 1); // Example: Needs AddItem function
+                 return;
+             }
 
-		// 5. Determine spawn location and rotation on the table
-		FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // Default location
-		FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation();
+            // 5. Determine spawn location and rotation on the table
+            FVector SpawnLocation = CurrentInteractableTable->GetActorLocation(); // Default location
+            FRotator SpawnRotation = CurrentInteractableTable->GetActorRotation();
 
-		// Try to find the 'ItemSpawnPoint' component by name
-		USceneComponent* SpawnPointComponent = Cast<USceneComponent>(CurrentInteractableTable->GetDefaultSubobjectByName(FName("ItemSpawnPoint"))); // Use GetDefaultSubobjectByName
-		if (SpawnPointComponent)
-		{
-			SpawnLocation = SpawnPointComponent->GetComponentLocation();
-			SpawnRotation = SpawnPointComponent->GetComponentRotation();
-			// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Found ItemSpawnPoint component. Using its location: %s"), *SpawnLocation.ToString()); // 제거
-		}
-		else
-		{
-			// Fallback if the component wasn't found (e.g., BP not set up correctly)
-			UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Could not find 'ItemSpawnPoint' component on table '%s'. Using table actor location + offset as fallback."), *CurrentInteractableTable->GetName());
-            SpawnLocation = CurrentInteractableTable->GetActorLocation() + FVector(0, 0, 10.0f); // Reduced fallback offset
-		}
+            USceneComponent* SpawnPointComponent = Cast<USceneComponent>(CurrentInteractableTable->GetDefaultSubobjectByName(FName("ItemSpawnPoint")));
+            if (SpawnPointComponent)
+            {
+                SpawnLocation = SpawnPointComponent->GetComponentLocation();
+                SpawnRotation = SpawnPointComponent->GetComponentRotation();
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Could not find 'ItemSpawnPoint' component on table '%s'. Using fallback location."), *CurrentInteractableTable->GetName());
+                SpawnLocation = CurrentInteractableTable->GetActorLocation() + FVector(0, 0, 10.0f);
+            }
 
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.Instigator = GetInstigator();
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+            FActorSpawnParameters SpawnParams;
+            SpawnParams.Owner = this;
+            SpawnParams.Instigator = GetInstigator();
+            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-		// 6. Spawn the item actor at the spawn point location
-		AInventoryItemActor* PlacedActor = GetWorld()->SpawnActor<AInventoryItemActor>(DefaultItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
+            // 6. Spawn the item actor at the spawn point location
+            AInventoryItemActor* PlacedActor = GetWorld()->SpawnActor<AInventoryItemActor>(DefaultItemActorClass, SpawnLocation, SpawnRotation, SpawnParams);
 
-		if (PlacedActor)
-		{
-			// UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Successfully spawned actor %s."), *PlacedActor->GetName()); // 제거
+            if (PlacedActor)
+            {
+                UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Spawned actor %s on table %s."), *PlacedActor->GetName(), *CurrentInteractableTable->GetName());
 
-			// 7. Set up the spawned actor
-			FSlotStruct SpawnedItemData = ItemDataToPlace; // Use the copied data
-			SpawnedItemData.Quantity = 1; // We are placing only one item
-			PlacedActor->SetItemData(SpawnedItemData);
-			// PlacedActor->RequestEnablePhysics(); // 필요에 따라 물리 활성화 여부 결정
-		}
-		else
-		{
-			// UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s."), *DefaultItemActorClass->GetName()); // 에러 로그는 유지하거나 필요에 따라 제거
-		}
+                // 7. Set up the spawned actor
+                FSlotStruct SpawnedItemData = ItemDataToPlace;
+                SpawnedItemData.Quantity = 1;
+                PlacedActor->SetItemData(SpawnedItemData);
+                 // Optionally enable physics for the placed item on the table
+                 // PlacedActor->RequestEnablePhysics();
+            }
+            else
+            {
+                 UE_LOG(LogTemp, Error, TEXT("[PlaceItemOnTable] Failed to spawn Item Actor of class %s on table."), *DefaultItemActorClass->GetName());
+                 // Give the item back if spawning failed
+                 // InventoryComponent->AddItemToInventory(ItemDataToPlace.ItemID.RowName, 1); // Example: Needs AddItem function
+            }
+        }
 	}
 	else
 	{
-		// UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to remove item from slot %d. Aborting placement."), SlotIndex); // 경고 로그는 유지하거나 필요에 따라 제거
+		UE_LOG(LogTemp, Warning, TEXT("[PlaceItemOnTable] Failed to remove item from slot %d. Aborting placement."), SlotIndex);
 	}
 }
 
