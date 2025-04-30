@@ -99,85 +99,76 @@ void UCookingWidget::OnAddIngredientClicked()
 		USceneComponent* PotLocationComp = CurrentTable->GetPotLocationComponent();
 		if (PotLocationComp)
 		{
-			// Calculate target transform for the ACTOR at the pot location
-			FTransform TargetActorTransform = PotLocationComp->GetComponentTransform();
+			// Calculate target transform for the ACTOR's origin at the pot location
+			FTransform TargetActorOriginTransform = PotLocationComp->GetComponentTransform();
 			// Optional: Add slight random offset to location for visual variation
 			FVector RandomOffset = FVector(FMath::RandRange(-2.0f, 2.0f), FMath::RandRange(-2.0f, 2.0f), FMath::RandRange(0.0f, 5.0f));
-			TargetActorTransform.AddToTranslation(RandomOffset);
-			// Optional: Randomize rotation slightly? Maybe just keep pot rotation
+			TargetActorOriginTransform.AddToTranslation(RandomOffset);
 
-			UE_LOG(LogTemp, Log, TEXT("Moving %s to target transform: %s"), *IngredientToAdd->GetName(), *TargetActorTransform.ToString());
+			UE_LOG(LogTemp, Log, TEXT("Teleporting components of %s towards target origin: %s"), *IngredientToAdd->GetName(), *TargetActorOriginTransform.ToString());
 
-			// --- Step 1: Disable physics on ProcMesh components BEFORE moving --- 
-			TArray<UProceduralMeshComponent*> ProcMeshesToModify;
-			IngredientToAdd->GetComponents<UProceduralMeshComponent>(ProcMeshesToModify);
-			for (UProceduralMeshComponent* MeshComp : ProcMeshesToModify)
+			// --- Get the designated component to teleport ---
+			UProceduralMeshComponent* MeshCompToTeleport = IngredientToAdd->GetPotTargetMeshComponent(); // Helper function needed in AInventoryItemActor
+
+			if (MeshCompToTeleport && MeshCompToTeleport->IsSimulatingPhysics())
 			{
-				if (MeshComp && MeshComp->IsSimulatingPhysics())
-				{
-					UE_LOG(LogTemp, Log, TEXT("  - Disabling physics for component: %s"), *MeshComp->GetName());
-					MeshComp->SetSimulatePhysics(false);
-				}
+				UE_LOG(LogTemp, Log, TEXT("  - Teleporting designated component: %s"), *MeshCompToTeleport->GetName());
+				// Stop current physics movement before teleport
+				MeshCompToTeleport->SetPhysicsLinearVelocity(FVector::ZeroVector);
+				MeshCompToTeleport->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+
+				// Calculate the component's target world transform based on its relative offset from the actor's target origin
+				// IMPORTANT: Using the designated component's relative transform
+				FTransform RelativeCompTransform = MeshCompToTeleport->GetRelativeTransform();
+				FTransform TargetCompWorldTransform = RelativeCompTransform * TargetActorOriginTransform;
+
+				// Teleport the physics body
+				MeshCompToTeleport->SetWorldTransform(TargetCompWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+
+				// --- Log FINAL location and visibility AFTER teleport ---
+				FVector FinalCompLoc = MeshCompToTeleport->GetComponentLocation();
+				UE_LOG(LogTemp, Log, TEXT("Post-Teleport Check for %s Component:"), *MeshCompToTeleport->GetName());
+				UE_LOG(LogTemp, Log, TEXT("  - Final Component World Location: %s (Visible: %s, SimPhys: %s)"),
+					   *FinalCompLoc.ToString(),
+					   MeshCompToTeleport->IsVisible() ? TEXT("Yes") : TEXT("No"),
+					   MeshCompToTeleport->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"));
+
+				IngredientActorsInPot.Add(IngredientToAdd); // Still track the actor
+				UE_LOG(LogTemp, Log, TEXT("Finished teleporting component for %s."), *IngredientToAdd->GetName());
 			}
-			// Also ensure static mesh physics is off
-			UStaticMeshComponent* StaticMesh = IngredientToAdd->FindComponentByClass<UStaticMeshComponent>();
-			if (StaticMesh && StaticMesh->IsSimulatingPhysics()) StaticMesh->SetSimulatePhysics(false);
-
-			// --- Step 2: Move the Actor itself (Root Component) --- 
-			IngredientToAdd->SetActorTransform(TargetActorTransform, false, nullptr, ETeleportType::None); 
-
-			// --- Step 3: Request physics re-enable on the actor (will happen next tick) --- 
-			IngredientToAdd->RequestPhysicsReenable();
-
-			// --- Removed physics re-enable loop --- 
-
-			// Collision should remain enabled for stacking in the pot
-			// IngredientToAdd->SetActorEnableCollision(ECollisionEnabled::NoCollision);
-
-			// --- Log FINAL locations and visibility AFTER move (physics will enable next tick) ---
-			FVector FinalActorLoc = IngredientToAdd->GetActorLocation();
-			UE_LOG(LogTemp, Log, TEXT("Post-Move Check for %s:"), *IngredientToAdd->GetName());
-			UE_LOG(LogTemp, Log, TEXT("  - Final Actor World Location: %s"), *FinalActorLoc.ToString());
-			UStaticMeshComponent* FinalStaticMesh = IngredientToAdd->FindComponentByClass<UStaticMeshComponent>();
-			if (FinalStaticMesh) {
-				UE_LOG(LogTemp, Log, TEXT("  - Final StaticMesh World Location: %s (Visible: %s)"), 
-					*FinalStaticMesh->GetComponentLocation().ToString(), 
-					FinalStaticMesh->IsVisible() ? TEXT("Yes") : TEXT("No"));
-			}
-			int ProcMeshIndex = 0;
-			for(UProceduralMeshComponent* MeshComp : ProcMeshesToModify)
+			else if (MeshCompToTeleport)
 			{
-				if(MeshComp)
-				{
-					 UE_LOG(LogTemp, Log, TEXT("  - Final ProcMesh[%d] World Location: %s (Visible: %s, SimPhys: %s)"), 
-						ProcMeshIndex++,
-						*MeshComp->GetComponentLocation().ToString(), 
-						MeshComp->IsVisible() ? TEXT("Yes") : TEXT("No"),
-						MeshComp->IsSimulatingPhysics() ? TEXT("Yes") : TEXT("No"));
-				}
+				 UE_LOG(LogTemp, Warning, TEXT("  - Designated component %s exists but is not simulating physics. Cannot teleport physics body."), *MeshCompToTeleport->GetName());
+				 // Optionally handle non-simulating move here if needed
 			}
-			// --- End Final Log --- 
+			else
+			{
+				 UE_LOG(LogTemp, Error, TEXT("Could not find designated PotTargetMeshComponent on IngredientToAdd %s."), *IngredientToAdd->GetName());
+				 // Consider destroying the actor or handling the error
+				 IngredientToAdd->Destroy(); // Example: Destroy if component is missing
+			}
+
+			// --- DO NOT Move the actor itself ---
+			// IngredientToAdd->SetActorTransform(TargetActorOriginTransform, false, nullptr, ETeleportType::None);
+
 			
-			IngredientActorsInPot.Add(IngredientToAdd);
-			UE_LOG(LogTemp, Log, TEXT("Finished moving ingredient actor %s. Physics re-enable requested."), *IngredientToAdd->GetName());
+			NearbyIngredient = nullptr;
+			if (AddIngredientButton)
+			{
+				AddIngredientButton->SetIsEnabled(false);
+			}
+
+			FName TempResultID;
+			bool bRecipeFound = CheckRecipe(TempResultID);
+			if (CookButton)
+			{
+				CookButton->SetIsEnabled(bRecipeFound);
+			}
 		}
 		else
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Could not find PotLocationComponent on CurrentTable %s. Destroying ingredient instead."), *GetNameSafe(CurrentTable));
 			IngredientToAdd->Destroy();
-		}
-
-		NearbyIngredient = nullptr;
-		if (AddIngredientButton)
-		{
-			AddIngredientButton->SetIsEnabled(false);
-		}
-
-		FName TempResultID;
-		bool bRecipeFound = CheckRecipe(TempResultID);
-		if (CookButton)
-		{
-			CookButton->SetIsEnabled(bRecipeFound);
 		}
 	}
 	else

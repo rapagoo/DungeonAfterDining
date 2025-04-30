@@ -54,6 +54,10 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UProceduralMeshComponent> OtherHalfProceduralMeshComponent; // Use TObjectPtr for safety
 
+	// Procedural mesh designated to be added to the pot after slicing
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Slicing", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UProceduralMeshComponent> PotTargetMeshComponent;
+
 	// REMOVED: Temporary Static Mesh Component (Now using StaticMeshComponent directly as source)
 	// UPROPERTY(Transient) 
 	// UStaticMeshComponent* TemporarySourceMeshComponent;
@@ -118,6 +122,10 @@ public:
 	// Returns whether the item has been sliced
 	UFUNCTION(BlueprintPure, Category = "Slicing")
 	bool IsSliced() const { return bIsSliced; }
+
+	// Gets the procedural mesh component designated to be added to the pot
+	UFUNCTION(BlueprintPure, Category = "Slicing")
+	UProceduralMeshComponent* GetPotTargetMeshComponent() const { return PotTargetMeshComponent; }
 
 #if WITH_EDITOR
 	// Called when properties are changed in the editor AFTER construction

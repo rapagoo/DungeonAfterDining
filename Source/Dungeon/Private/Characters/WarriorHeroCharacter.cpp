@@ -638,7 +638,7 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
         // Play slicing visual effect (Niagara) if assigned
         if (SliceNiagaraEffect)
         {
-            UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SliceNiagaraEffect, PlanePosition, PlaneNormal.Rotation(), SliceNiagaraScale);
+            UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SliceNiagaraEffect, PlanePosition, PlaneNormal.Rotation());
         }
         // Optional: Log if the deprecated particle system is still assigned
         // else if (SliceParticleEffect_DEPRECATED)
@@ -648,15 +648,15 @@ void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const
         // }
 
         // Play slicing sound effect if assigned
-        if (SliceSoundEffect)
+        if (SliceSound)
         {
-            UGameplayStatics::PlaySoundAtLocation(GetWorld(), SliceSoundEffect, PlanePosition);
+            UGameplayStatics::PlaySoundAtLocation(GetWorld(), SliceSound, PlanePosition);
         }
 
         UE_LOG(LogTemp, Log, TEXT("Slice successful for %s. Played effects (Niagara: %s, Sound: %s)."), 
             *ItemToSlice->GetName(), 
             SliceNiagaraEffect ? TEXT("Yes") : TEXT("No"), 
-            SliceSoundEffect ? TEXT("Yes") : TEXT("No"));
+            SliceSound ? TEXT("Yes") : TEXT("No"));
     }
     else
     {
@@ -757,3 +757,11 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 
 #pragma region Components Getters
 // ... existing code ...
+
+// Called every frame
+void AWarriorHeroCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// Add any per-frame logic here if needed
+}
