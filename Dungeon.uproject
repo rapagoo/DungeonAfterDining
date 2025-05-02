@@ -37,6 +37,10 @@
 		{
 			"Name": "UnrealMCP",
 			"Enabled": false
+		},
+		{
+			"Name": "PCG",
+			"Enabled": true
 		}
 	]
 }
