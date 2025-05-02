@@ -254,7 +254,11 @@ void UInventoryComponent::HandlePickup()
 
 bool UInventoryComponent::AddItem(const FSlotStruct& ItemToAdd)
 {
-	UE_LOG(LogTemp, Log, TEXT("[AddItem] Function Called. Trying to add %s (Qty: %d)"), *ItemToAdd.ItemID.RowName.ToString(), ItemToAdd.Quantity);
+	// Log the item type being added
+	UE_LOG(LogTemp, Log, TEXT("[AddItem] Attempting to add Item: %s, Type: %s, Quantity: %d"), 
+		   *ItemToAdd.ItemID.RowName.ToString(), 
+		   *UEnum::GetValueAsString(ItemToAdd.ItemType), 
+		   ItemToAdd.Quantity);
 
 	if (!ItemDataTable.IsValid() || ItemToAdd.ItemID.RowName.IsNone() || ItemToAdd.Quantity <= 0)
 	{

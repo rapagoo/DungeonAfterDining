@@ -207,6 +207,7 @@ void AInteractablePot::OnCookingComplete()
                         ItemToAdd.ItemID.RowName = ResultItemID; 
                         ItemToAdd.Quantity = 1; // Assuming cooking always yields 1
                         // ItemToAdd.ItemID.DataTable = ItemDataTable; // Set if your AddItem requires it
+                        ItemToAdd.ItemType = CookedItemData->ItemType; // Correctly assign ItemType from Data Table
                         
                         // Attempt to add using AddItem(FSlotStruct)
                         if (!PlayerInventory->AddItem(ItemToAdd)) // Assumes AddItem(FSlotStruct) exists

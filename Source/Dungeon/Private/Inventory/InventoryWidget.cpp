@@ -56,18 +56,25 @@ void UInventoryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Bind button clicks and hover events
-	/* // Moved to Initialize() to prevent multiple bindings
+	// Bind tab button click events
 	if (EatableButton)
 	{
 		EatableButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnEatableButtonClicked);
-		EatableButton->OnHovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonHovered);
-		EatableButton->OnUnhovered.AddDynamic(this, &UInventoryWidget::OnEatableButtonUnhovered);
 	}
-	*/
-
-	// Optional: Ensure the first tab is selected on construct if needed
-	// SelectTab(2); // Or maybe SelectTab(2) if Eatables is default?
+	if (FoodButton)
+	{
+		FoodButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnFoodButtonClicked);
+	}
+	if (RecipesButton)
+	{
+		RecipesButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnRecipesButtonClicked);
+	}
+	
+	// Set initial tab (e.g., Eatables)
+	if (TabWidgetSwitcher && EatablesWrapBox)
+	{
+		TabWidgetSwitcher->SetActiveWidget(EatablesWrapBox);
+	}
 }
 
 bool UInventoryWidget::Initialize()
@@ -182,7 +189,11 @@ void UInventoryWidget::SelectTab(int32 TabIndex)
 
 void UInventoryWidget::OnEatableButtonClicked()
 {
-	SelectTab(0); // Select the Eatables tab (index 0)
+	if (TabWidgetSwitcher && EatablesWrapBox)
+	{
+		TabWidgetSwitcher->SetActiveWidget(EatablesWrapBox);
+		UE_LOG(LogTemp, Log, TEXT("Switched to Eatables Tab"));
+	}
 }
 
 void UInventoryWidget::OnEatableButtonHovered()
@@ -211,64 +222,94 @@ void UInventoryWidget::OnEatableButtonUnhovered()
 	}
 }
 
+void UInventoryWidget::OnFoodButtonClicked()
+{
+	if (TabWidgetSwitcher && FoodWrapBox)
+	{
+		TabWidgetSwitcher->SetActiveWidget(FoodWrapBox);
+		UE_LOG(LogTemp, Log, TEXT("Switched to Food Tab"));
+	}
+}
+
+void UInventoryWidget::OnRecipesButtonClicked()
+{
+	if (TabWidgetSwitcher && RecipesWrapBox)
+	{
+		TabWidgetSwitcher->SetActiveWidget(RecipesWrapBox);
+		UE_LOG(LogTemp, Log, TEXT("Switched to Recipes Tab"));
+	}
+}
+
 void UInventoryWidget::UpdateItemsInInventoryUI(const TArray<FSlotStruct>& AllItems)
 {
-	// Check if WrapBox and Slot class are valid
-	if (!EatablesWrapBox || !SlotWidgetClass)
+	// Check if WrapBoxes and Slot class are valid
+	if (!EatablesWrapBox || !FoodWrapBox || !RecipesWrapBox || !SlotWidgetClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("UpdateItemsInInventoryUI: EatablesWrapBox or SlotWidgetClass is not set!"));
+		UE_LOG(LogTemp, Error, TEXT("UpdateItemsInInventoryUI: One or more WrapBoxes or SlotWidgetClass is not set!"));
 		return;
 	}
 
-	// Clear existing slots in the Eatables wrap box
+	// Clear existing slots in ALL wrap boxes
 	EatablesWrapBox->ClearChildren();
+	FoodWrapBox->ClearChildren();
+	RecipesWrapBox->ClearChildren();
 
-	UE_LOG(LogTemp, Log, TEXT("Updating Eatables UI with %d total items."), AllItems.Num());
+	UE_LOG(LogTemp, Log, TEXT("Updating Inventory UI with %d total items."), AllItems.Num());
 
-	// Loop through all items and create slot widgets for Eatables
+	// Loop through all items and create slot widgets in the correct tab
 	for (int32 Index = 0; Index < AllItems.Num(); ++Index)
 	{
 		const FSlotStruct& CurrentItem = AllItems[Index];
+		UWrapBox* TargetWrapBox = nullptr;
 
-		// Filter for Eatables (or other types if needed)
-		if (CurrentItem.ItemType == EInventoryItemType::EIT_Eatables)
+		// Log the item type being processed in the UI update
+		UE_LOG(LogTemp, Log, TEXT("[UpdateItemsInInventoryUI] Processing Item Index: %d, ID: %s, Type: %s, Qty: %d"), 
+			   Index, 
+			   *CurrentItem.ItemID.RowName.ToString(), 
+			   *UEnum::GetValueAsString(CurrentItem.ItemType),
+			   CurrentItem.Quantity);
+
+		// Determine the target wrap box based on item type
+		switch (CurrentItem.ItemType)
+		{
+			case EInventoryItemType::EIT_Eatables:
+				TargetWrapBox = EatablesWrapBox;
+				UE_LOG(LogTemp, Log, TEXT("[UpdateItemsInInventoryUI] Assigning to EatablesWrapBox"));
+				break;
+			case EInventoryItemType::EIT_Food:
+				TargetWrapBox = FoodWrapBox;
+				 UE_LOG(LogTemp, Log, TEXT("[UpdateItemsInInventoryUI] Assigning to FoodWrapBox"));
+				break;
+			case EInventoryItemType::EIT_Recipe:
+				TargetWrapBox = RecipesWrapBox;
+				 UE_LOG(LogTemp, Log, TEXT("[UpdateItemsInInventoryUI] Assigning to RecipesWrapBox"));
+				break;
+			// Add cases for other types like Sword, Shield if needed
+			default:
+				 UE_LOG(LogTemp, Warning, TEXT("[UpdateItemsInInventoryUI] Unhandled item type %s for item ID %s at index %d. Assigning to default (Eatables)."), 
+					   *UEnum::GetValueAsString(CurrentItem.ItemType), 
+					   *CurrentItem.ItemID.RowName.ToString(), 
+					   Index);
+				TargetWrapBox = EatablesWrapBox; // Default to Eatables for now
+				break;
+		}
+
+		// If a target box was determined and the item is valid (e.g., has a valid ID)
+		if (TargetWrapBox && !CurrentItem.ItemID.RowName.IsNone() && CurrentItem.Quantity > 0)
 		{
 			// Create a new slot widget
 			UUserWidget* CreatedWidget = CreateWidget(this, SlotWidgetClass);
-			if (CreatedWidget)
-			{
-				// --- Pass data to the Slot Widget --- 
-				// Cast the created widget to our C++ Slot Widget class
-				USlotWidget* SlotWidget = Cast<USlotWidget>(CreatedWidget);
-				if (SlotWidget)
-				{
-					// Call the initialization function on the C++ slot widget
-					// Pass OwnerCharacter and OwnerInventory (now stored as members)
-					// Also pass the Item Info Widget reference
-					SlotWidget->InitializeSlot(CurrentItem, Index, OwnerCharacter, OwnerInventory, WBP_ItemInfo);
-					UE_LOG(LogTemp, Verbose, TEXT("Initialized Slot Widget for item %s at index %d"), *CurrentItem.ItemID.RowName.ToString(), Index);
-				}
-				else
-				{
-					// Log an error if casting failed - SlotWidgetClass might not be derived from USlotWidget
-					UE_LOG(LogTemp, Error, TEXT("Failed to cast CreatedWidget to USlotWidget. Ensure SlotWidgetClass is derived from USlotWidget."));
-				}
-				
-				// Add the created slot widget to the wrap box
-				EatablesWrapBox->AddChildToWrapBox(CreatedWidget);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("Failed to create SlotWidget."));
-			}
-		} // End if ItemType is Eatables
-	} // End for loop
+			USlotWidget* CreatedSlotWidget = Cast<USlotWidget>(CreatedWidget);
 
-	// Update the Item Info display (if bound and valid)
-	if (WBP_ItemInfo)
-	{
-		// Ensure ItemInfoWidget is hidden after updating the inventory UI
-		WBP_ItemInfo->SetVisibility(ESlateVisibility::Hidden);
-		UE_LOG(LogTemp, Log, TEXT("InventoryWidget: Explicitly hid ItemInfoWidget after UI update."));
+			if (CreatedSlotWidget)
+			{
+				// Initialize the slot widget with item data and index using the correct function
+				// Also pass the Item Info Widget reference (WBP_ItemInfo)
+				CreatedSlotWidget->InitializeSlot(CurrentItem, Index, OwnerCharacter, OwnerInventory, WBP_ItemInfo);
+				
+				// Add the created slot widget to the determined wrap box
+				TargetWrapBox->AddChildToWrapBox(CreatedSlotWidget);
+			}
+		}
 	}
 } 

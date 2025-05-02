@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Inventory/InvenItemEnum.h" // For EInventoryItemType
 #include "Inventory/SlotStruct.h" // For FSlotStruct
+#include "Components/WidgetSwitcher.h" // Include WidgetSwitcher
 #include "InventoryWidget.generated.h"
 
 // Forward declarations
@@ -44,6 +45,12 @@ protected:
 	// Add other WrapBoxes for different item types (e.g., WeaponsWrapBox)
 
 	UPROPERTY(meta = (BindWidget))
+	UWrapBox* FoodWrapBox;
+
+	UPROPERTY(meta = (BindWidget))
+	UWrapBox* RecipesWrapBox;
+
+	UPROPERTY(meta = (BindWidget))
 	UItemInfoWidget* WBP_ItemInfo; // Instance of our C++ Item Info Widget
 
 	// --- Tab Styling --- 
@@ -66,6 +73,13 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	UInventoryComponent* OwnerInventory = nullptr;
+
+	// Bind the buttons for tab switching
+	UPROPERTY(meta = (BindWidget))
+	UButton* FoodButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* RecipesButton;
 
 public:
 	// Constructor
@@ -97,7 +111,12 @@ protected:
 	// Button Callbacks
 	UFUNCTION()
 	void OnEatableButtonClicked();
-	// Add callbacks for other tab buttons
+
+	UFUNCTION()
+	void OnFoodButtonClicked();
+
+	UFUNCTION()
+	void OnRecipesButtonClicked();
 
 	// Hover Callbacks
 	UFUNCTION()
