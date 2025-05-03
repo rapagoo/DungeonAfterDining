@@ -36,6 +36,12 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UImage* EatableTabImage;
 	// Add other tab images
+	// Assuming corresponding Image widgets exist in UMG
+	UPROPERTY(meta = (BindWidget))
+	UImage* FoodTabImage;
+
+	UPROPERTY(meta = (BindWidget))
+	UImage* RecipesTabImage;
 
 	UPROPERTY(meta = (BindWidget))
 	UWidgetSwitcher* TabWidgetSwitcher;
@@ -124,4 +130,12 @@ protected:
 	UFUNCTION()
 	void OnEatableButtonUnhovered();
 	// Add hover callbacks for other tab buttons
+	UFUNCTION()
+	void OnFoodButtonHovered();
+	UFUNCTION()
+	void OnFoodButtonUnhovered();
+	UFUNCTION()
+	void OnRecipesButtonHovered();
+	UFUNCTION()
+	void OnRecipesButtonUnhovered();
 }; 

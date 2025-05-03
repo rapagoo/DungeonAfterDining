@@ -104,6 +104,48 @@ bool UInventoryWidget::Initialize()
 		UE_LOG(LogTemp, Warning, TEXT("UInventoryWidget::Initialize - EatableButton is not valid!"));
 	}
 
+	// Add bindings for Food button
+	if (FoodButton)
+	{
+		 if (!FoodButton->OnClicked.IsBound())
+		{
+			FoodButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnFoodButtonClicked);
+		}
+		if (!FoodButton->OnHovered.IsBound())
+		{
+			 FoodButton->OnHovered.AddDynamic(this, &UInventoryWidget::OnFoodButtonHovered);
+		}
+	   if (!FoodButton->OnUnhovered.IsBound())
+		{
+			FoodButton->OnUnhovered.AddDynamic(this, &UInventoryWidget::OnFoodButtonUnhovered);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UInventoryWidget::Initialize - FoodButton is not valid!"));
+	}
+
+	// Add bindings for Recipes button
+	 if (RecipesButton)
+	{
+		 if (!RecipesButton->OnClicked.IsBound())
+		{
+			RecipesButton->OnClicked.AddDynamic(this, &UInventoryWidget::OnRecipesButtonClicked);
+		}
+		if (!RecipesButton->OnHovered.IsBound())
+		{
+			 RecipesButton->OnHovered.AddDynamic(this, &UInventoryWidget::OnRecipesButtonHovered);
+		}
+	   if (!RecipesButton->OnUnhovered.IsBound())
+		{
+			RecipesButton->OnUnhovered.AddDynamic(this, &UInventoryWidget::OnRecipesButtonUnhovered);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UInventoryWidget::Initialize - RecipesButton is not valid!"));
+	}
+
 	// Add bindings for other tab buttons if they exist...
 
 	return true;
@@ -189,10 +231,15 @@ void UInventoryWidget::SelectTab(int32 TabIndex)
 
 void UInventoryWidget::OnEatableButtonClicked()
 {
-	if (TabWidgetSwitcher && EatablesWrapBox)
+	if (TabWidgetSwitcher && EatablesWrapBox && EatableTabImage && FoodTabImage && RecipesTabImage)
 	{
 		TabWidgetSwitcher->SetActiveWidget(EatablesWrapBox);
 		UE_LOG(LogTemp, Log, TEXT("Switched to Eatables Tab"));
+
+		// Update all tab colors immediately
+		EatableTabImage->SetColorAndOpacity(ActivatedColor);
+		FoodTabImage->SetColorAndOpacity(NotActivatedColor);
+		RecipesTabImage->SetColorAndOpacity(NotActivatedColor);
 	}
 }
 
@@ -224,19 +271,77 @@ void UInventoryWidget::OnEatableButtonUnhovered()
 
 void UInventoryWidget::OnFoodButtonClicked()
 {
-	if (TabWidgetSwitcher && FoodWrapBox)
+	if (TabWidgetSwitcher && FoodWrapBox && EatableTabImage && FoodTabImage && RecipesTabImage)
 	{
 		TabWidgetSwitcher->SetActiveWidget(FoodWrapBox);
 		UE_LOG(LogTemp, Log, TEXT("Switched to Food Tab"));
+
+		// Update all tab colors immediately
+		EatableTabImage->SetColorAndOpacity(NotActivatedColor);
+		FoodTabImage->SetColorAndOpacity(ActivatedColor);
+		RecipesTabImage->SetColorAndOpacity(NotActivatedColor);
+	}
+}
+
+void UInventoryWidget::OnFoodButtonHovered()
+{
+	if (FoodTabImage)
+	{
+		FoodTabImage->SetColorAndOpacity(HoveredColor);
+	}
+}
+
+void UInventoryWidget::OnFoodButtonUnhovered()
+{
+	if (FoodTabImage && TabWidgetSwitcher && FoodWrapBox)
+	{
+		// Set color back based on whether this tab is currently active
+		if (TabWidgetSwitcher->GetActiveWidget() == FoodWrapBox)
+		{
+			FoodTabImage->SetColorAndOpacity(ActivatedColor);
+		}
+		else
+		{
+			FoodTabImage->SetColorAndOpacity(NotActivatedColor);
+		}
 	}
 }
 
 void UInventoryWidget::OnRecipesButtonClicked()
 {
-	if (TabWidgetSwitcher && RecipesWrapBox)
+	if (TabWidgetSwitcher && RecipesWrapBox && EatableTabImage && FoodTabImage && RecipesTabImage)
 	{
 		TabWidgetSwitcher->SetActiveWidget(RecipesWrapBox);
 		UE_LOG(LogTemp, Log, TEXT("Switched to Recipes Tab"));
+
+		// Update all tab colors immediately
+		EatableTabImage->SetColorAndOpacity(NotActivatedColor);
+		FoodTabImage->SetColorAndOpacity(NotActivatedColor);
+		RecipesTabImage->SetColorAndOpacity(ActivatedColor);
+	}
+}
+
+void UInventoryWidget::OnRecipesButtonHovered()
+{
+	if (RecipesTabImage)
+	{
+		RecipesTabImage->SetColorAndOpacity(HoveredColor);
+	}
+}
+
+void UInventoryWidget::OnRecipesButtonUnhovered()
+{
+	if (RecipesTabImage && TabWidgetSwitcher && RecipesWrapBox)
+	{
+		// Set color back based on whether this tab is currently active
+		 if (TabWidgetSwitcher->GetActiveWidget() == RecipesWrapBox)
+		{
+			RecipesTabImage->SetColorAndOpacity(ActivatedColor);
+		}
+		else
+		{
+			RecipesTabImage->SetColorAndOpacity(NotActivatedColor);
+		}
 	}
 }
 

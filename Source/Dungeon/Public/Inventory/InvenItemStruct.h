@@ -49,11 +49,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item Properties | Cooking")
 	FName SlicedItemID; // 잘렸을 때 변환될 아이템의 Row Name
 
+	// Add a new field to link Recipe items to actual cooking recipes
+	// This should be the Row Name of the recipe in the RecipeDataTable (e.g., "PotatoSoup")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe")
+	FName UnlocksRecipeID = NAME_None; // Default to None
+
 	// Default constructor
 	FInventoryItemStruct()
 		: ItemType(EInventoryItemType::EIT_Eatables) // Initialize with a valid existing enum value
 		, StackSize(1)
 		, Power(0.0f)
+		, UnlocksRecipeID(NAME_None)
 	{
 		// Initialize default values if needed
 	}

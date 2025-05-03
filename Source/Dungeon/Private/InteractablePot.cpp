@@ -148,27 +148,88 @@ void AInteractablePot::StartCooking()
 		return;
 	}
 
-	FName ResultItemID = CheckRecipeInternal();
+	// Check if ingredients match a known recipe
+	FName ResultItemID = CheckRecipeInternal(); // This is the ID of the *output item* (e.g., PotatoSoup)
 
 	if (ResultItemID != NAME_None)
 	{
-		UE_LOG(LogTemp, Log, TEXT("Starting to cook recipe for: %s"), *ResultItemID.ToString());
-		// Activate cooking effects
-		CookingEffectParticles->ActivateSystem();
+		// --- Check if Player Knows the Recipe ---
+		bool bPlayerKnowsRecipe = false;
+		APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+		if (PlayerController)
+		{
+			AWarriorHeroCharacter* PlayerChar = Cast<AWarriorHeroCharacter>(PlayerController->GetPawn());
+			if (PlayerChar)
+			{
+				UInventoryComponent* PlayerInventory = PlayerChar->GetInventoryComponent();
+				if (PlayerInventory && ItemDataTable) // Also check if ItemDataTable is valid
+				{
+					// Iterate through player's inventory slots
+					for (const FSlotStruct& Slot : PlayerInventory->InventorySlots)
+					{
+						// Check if the slot contains a Recipe item
+						if (Slot.ItemType == EInventoryItemType::EIT_Recipe && !Slot.ItemID.RowName.IsNone())
+						{
+							// Find the item definition for this recipe item in the ItemDataTable
+							const FString ContextString(TEXT("Checking Recipe Knowledge"));
+							FInventoryItemStruct* RecipeItemData = ItemDataTable->FindRow<FInventoryItemStruct>(Slot.ItemID.RowName, ContextString);
 
-		// Start the cooking timer
-		GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
+							if (RecipeItemData)
+							{
+								// Check if this recipe item unlocks the recipe we are trying to cook
+								// Note: ResultItemID is the ID of the *food* we want to cook (e.g., PotatoSoup)
+								// RecipeItemData->UnlocksRecipeID should match this ID.
+								if (RecipeItemData->UnlocksRecipeID == ResultItemID)
+								{
+									bPlayerKnowsRecipe = true;
+									UE_LOG(LogTemp, Log, TEXT("Player knows recipe %s because they have item %s."), *ResultItemID.ToString(), *Slot.ItemID.RowName.ToString());
+									break; // Found the required recipe item, no need to check further
+								}
+							}
+						}
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - PlayerInventory or ItemDataTable is invalid. Cannot check recipe knowledge."));
+				}
+			}
+            else
+            {
+                 UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not cast Player Pawn to AWarriorHeroCharacter."));
+            }
+		}
+        else
+        {
+             UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not get PlayerController."));
+        }
 
-		// Optional: Disable adding more ingredients during cooking
-		// Optional: Provide feedback that cooking has started
+		// --- Proceed Only if Player Knows the Recipe ---
+		if (bPlayerKnowsRecipe)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Starting to cook recipe for: %s"), *ResultItemID.ToString());
+			// Activate cooking effects
+			CookingEffectParticles->ActivateSystem();
+
+			// Start the cooking timer
+			GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
+
+			// Optional: Disable adding more ingredients during cooking
+			// Optional: Provide feedback that cooking has started
+		}
+		else
+		{
+			// Player doesn't have the required recipe item in their inventory
+			UE_LOG(LogTemp, Warning, TEXT("Player attempted to cook %s, but does not have the required recipe item."), *ResultItemID.ToString());
+			// Optional: Provide feedback to player (e.g., "You don't know this recipe yet." message or sound)
+            // Consider clearing ingredients or leaving them. Let's leave them for now.
+		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Invalid recipe."));
+		UE_LOG(LogTemp, Warning, TEXT("Invalid recipe based on ingredients."));
 		// Optional: Provide failure feedback (sound, effect)
-		// Optional: Clear ingredients or allow player to remove them? Decide based on game design.
-		// AddedIngredientIDs.Empty(); // Example: Clear ingredients on failure
-		// NotifyWidgetUpdate(); // Update UI if ingredients are cleared
+        // Consider clearing ingredients or leaving them. Let's leave them for now.
 	}
 }
 
