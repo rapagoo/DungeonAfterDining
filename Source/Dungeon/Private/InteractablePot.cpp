@@ -20,6 +20,7 @@
 #include "Inventory/InvenItemStruct.h" // Added include
 #include "Inventory/InventoryComponent.h" // Ensure this is included if needed for FSlotStruct/AddItem
 #include "Characters/WarriorHeroCharacter.h" // For casting Player Pawn
+#include "Sound/SoundBase.h" // Include for USoundBase check
 
 // Sets default values
 AInteractablePot::AInteractablePot()
@@ -95,6 +96,13 @@ bool AInteractablePot::AddIngredient(FName IngredientID)
 		{
 			AddedIngredientIDs.Add(IngredientID);
 			UE_LOG(LogTemp, Log, TEXT("Added ingredient: %s"), *IngredientID.ToString());
+
+			// --- Play Add Ingredient Sound --- 
+			if (AddIngredientSound)
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, AddIngredientSound, GetActorLocation());
+			}
+			// ---------------------------------
 
 			// Spawn the ingredient mesh
 			UStaticMeshComponent* NewIngredientMesh = NewObject<UStaticMeshComponent>(this); // Create component owned by this actor
@@ -211,6 +219,13 @@ void AInteractablePot::StartCooking()
 			// Activate cooking effects
 			CookingEffectParticles->ActivateSystem();
 
+			// --- Play Start Cooking Sound --- 
+			if (StartCookingSound)
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, StartCookingSound, GetActorLocation());
+			}
+			// --------------------------------
+
 			// Start the cooking timer
 			GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
 
@@ -221,15 +236,31 @@ void AInteractablePot::StartCooking()
 		{
 			// Player doesn't have the required recipe item in their inventory
 			UE_LOG(LogTemp, Warning, TEXT("Player attempted to cook %s, but does not have the required recipe item."), *ResultItemID.ToString());
+			
+			// --- Play Cooking Fail Sound (Unknown Recipe) --- 
+			if (CookingFailSound)
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+			}
+			// ---------------------------------------------
+
 			// Optional: Provide feedback to player (e.g., "You don't know this recipe yet." message or sound)
-            // Consider clearing ingredients or leaving them. Let's leave them for now.
+			// Consider clearing ingredients or leaving them. Let's leave them for now.
 		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid recipe based on ingredients."));
+
+		// --- Play Cooking Fail Sound (Invalid Ingredients) --- 
+		if (CookingFailSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+		}
+		// --------------------------------------------------
+
 		// Optional: Provide failure feedback (sound, effect)
-        // Consider clearing ingredients or leaving them. Let's leave them for now.
+		// Consider clearing ingredients or leaving them. Let's leave them for now.
 	}
 }
 
@@ -274,9 +305,18 @@ void AInteractablePot::OnCookingComplete()
                         if (!PlayerInventory->AddItem(ItemToAdd)) // Assumes AddItem(FSlotStruct) exists
                         {
                             UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Failed to add cooked item '%s' to player inventory (Inventory full?). Dropping item instead."), *ResultItemID.ToString());
+                            
+                            // --- Play Cooking Fail Sound (Inventory Full) --- 
+                            // (Could use CookingFailSound or a specific InventoryFull sound)
+                            if (CookingFailSound) 
+                            {
+                                UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+                            }
+                            // ---------------------------------------------
+
                             // TODO: Implement item dropping logic here if AddItem fails
-                             // Get item data again to know what mesh to spawn for dropping
-                             UStaticMesh* DroppedMesh = CookedItemData->Mesh.LoadSynchronous();
+                            // Get item data again to know what mesh to spawn for dropping
+                            UStaticMesh* DroppedMesh = CookedItemData->Mesh.LoadSynchronous();
                             if (DroppedMesh)
                             {
                                 FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 100.0f + FVector(0,0,50.0f); // Example drop location slightly in front and above pot
@@ -296,6 +336,14 @@ void AInteractablePot::OnCookingComplete()
                         else
                         {
                              UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Successfully added '%s' to player inventory."), *ResultItemID.ToString());
+                             
+                             // --- Play Cooking Success Sound --- 
+                             if (CookingSuccessSound)
+                             {
+                                 UGameplayStatics::PlaySoundAtLocation(this, CookingSuccessSound, GetActorLocation());
+                             }
+                             // ----------------------------------
+
                              // Play success sound/effect?
                              ClearIngredientsVisually(); // Clear visual meshes
                              AddedIngredientIDs.Empty(); // Clear internal list
@@ -325,9 +373,16 @@ void AInteractablePot::OnCookingComplete()
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Cooking finished but CheckRecipeInternal returned NAME_None."));
+		// Optionally play fail sound here too?
+		if (CookingFailSound)
+		{
+			UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+		}
 	}
 
+	// These happen regardless of cooking success/failure if the timer finishes
 	AddedIngredientIDs.Empty();
+	ClearIngredientsVisually(); // Clear visual meshes if they weren't cleared on success
 	NotifyWidgetUpdate();
 }
 

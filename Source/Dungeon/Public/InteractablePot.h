@@ -16,6 +16,9 @@
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
 class UCookingWidget;
 
+// Forward declaration for SoundBase
+class USoundBase;
+
 UCLASS()
 class DUNGEON_API AInteractablePot : public AInteractableTable // Inherit from AInteractableTable or AActor
 {
@@ -123,5 +126,18 @@ protected:
 
 	// Destroys the visual representations (StaticMeshComponents) of the added ingredients
 	void ClearIngredientsVisually();
+
+	// --- Sound Effects --- 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
+	USoundBase* StartCookingSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
+	USoundBase* CookingSuccessSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
+	USoundBase* CookingFailSound; // Used for invalid recipe or unknown recipe
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
+	USoundBase* AddIngredientSound;
 
 }; 
