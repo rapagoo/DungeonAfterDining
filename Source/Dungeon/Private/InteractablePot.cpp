@@ -21,6 +21,8 @@
 #include "Inventory/InventoryComponent.h" // Ensure this is included if needed for FSlotStruct/AddItem
 #include "Characters/WarriorHeroCharacter.h" // For casting Player Pawn
 #include "Sound/SoundBase.h" // Include for USoundBase check
+#include "NiagaraComponent.h" // Include Niagara Component header
+#include "NiagaraFunctionLibrary.h" // Include Niagara Function Library for spawning systems if needed, and managing components
 
 // Sets default values
 AInteractablePot::AInteractablePot()
@@ -31,6 +33,12 @@ AInteractablePot::AInteractablePot()
 	// Create the Pot Mesh Component
 	PotMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PotMesh"));
 	RootComponent = PotMesh; // Set the mesh as the root component
+
+	// --- Create Firewood Mesh ---
+	FirewoodMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirewoodMesh"));
+	FirewoodMesh->SetupAttachment(RootComponent);
+	// Position the firewood below the pot in the Blueprint editor
+	// --- End Firewood Mesh ---
 
 	// --- Interaction Volume Setup --- 
 	InteractionVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionVolume"));
@@ -49,10 +57,17 @@ AInteractablePot::AInteractablePot()
 	IngredientDetectionVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	IngredientDetectionVolume->SetGenerateOverlapEvents(true); // Needed for OnIngredientOverlapBegin (if used)
 
-	// Create the Cooking Effect Particle System Component
-	CookingEffectParticles = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("CookingEffectParticles"));
-	CookingEffectParticles->SetupAttachment(RootComponent);
-	CookingEffectParticles->bAutoActivate = false; // Don't activate initially
+	// Create the Cooking Steam Particle System Component (Cascade)
+	CookingSteamParticles = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("CookingSteamParticles")); // Corrected name
+	CookingSteamParticles->SetupAttachment(RootComponent);
+	CookingSteamParticles->bAutoActivate = false; // Don't activate initially
+
+	// --- Create Fire Effect Niagara Component ---
+	FireEffectComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("FireEffectComponent"));
+	FireEffectComponent->SetupAttachment(FirewoodMesh ? FirewoodMesh : RootComponent); // Attach to firewood mesh if available, otherwise root
+	FireEffectComponent->bAutoActivate = false; // Don't activate initially
+	// Note: The actual Niagara System asset (FireNiagaraSystem) is assigned in the Blueprint defaults.
+	// --- End Fire Effect Niagara Component ---
 
 	CookingWidgetRef = nullptr; // Initialize widget reference
 
@@ -68,6 +83,11 @@ void AInteractablePot::BeginPlay()
 	// Bind the overlap function
 	IngredientDetectionVolume->OnComponentBeginOverlap.AddDynamic(this, &AInteractablePot::OnIngredientOverlapBegin);
 
+	// Ensure Fire Effect component uses the assigned Niagara system
+	if (FireNiagaraSystem && FireEffectComponent)
+	{
+		FireEffectComponent->SetAsset(FireNiagaraSystem);
+	}
 }
 
 // Called every frame
@@ -152,7 +172,6 @@ void AInteractablePot::StartCooking()
 	if (AddedIngredientIDs.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No ingredients in the pot to cook."));
-		// Optional: Add feedback to player (sound, message)
 		return;
 	}
 
@@ -170,29 +189,20 @@ void AInteractablePot::StartCooking()
 			if (PlayerChar)
 			{
 				UInventoryComponent* PlayerInventory = PlayerChar->GetInventoryComponent();
-				if (PlayerInventory && ItemDataTable) // Also check if ItemDataTable is valid
+				if (PlayerInventory && ItemDataTable)
 				{
-					// Iterate through player's inventory slots
 					for (const FSlotStruct& Slot : PlayerInventory->InventorySlots)
 					{
-						// Check if the slot contains a Recipe item
 						if (Slot.ItemType == EInventoryItemType::EIT_Recipe && !Slot.ItemID.RowName.IsNone())
 						{
-							// Find the item definition for this recipe item in the ItemDataTable
 							const FString ContextString(TEXT("Checking Recipe Knowledge"));
 							FInventoryItemStruct* RecipeItemData = ItemDataTable->FindRow<FInventoryItemStruct>(Slot.ItemID.RowName, ContextString);
 
-							if (RecipeItemData)
+							if (RecipeItemData && RecipeItemData->UnlocksRecipeID == ResultItemID)
 							{
-								// Check if this recipe item unlocks the recipe we are trying to cook
-								// Note: ResultItemID is the ID of the *food* we want to cook (e.g., PotatoSoup)
-								// RecipeItemData->UnlocksRecipeID should match this ID.
-								if (RecipeItemData->UnlocksRecipeID == ResultItemID)
-								{
-									bPlayerKnowsRecipe = true;
-									UE_LOG(LogTemp, Log, TEXT("Player knows recipe %s because they have item %s."), *ResultItemID.ToString(), *Slot.ItemID.RowName.ToString());
-									break; // Found the required recipe item, no need to check further
-								}
+								bPlayerKnowsRecipe = true;
+								UE_LOG(LogTemp, Log, TEXT("Player knows recipe %s because they have item %s."), *ResultItemID.ToString(), *Slot.ItemID.RowName.ToString());
+								break;
 							}
 						}
 					}
@@ -202,24 +212,27 @@ void AInteractablePot::StartCooking()
 					UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - PlayerInventory or ItemDataTable is invalid. Cannot check recipe knowledge."));
 				}
 			}
-            else
-            {
-                 UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not cast Player Pawn to AWarriorHeroCharacter."));
-            }
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not cast Player Pawn to AWarriorHeroCharacter."));
+			}
 		}
-        else
-        {
-             UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not get PlayerController."));
-        }
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCooking - Could not get PlayerController."));
+		}
+		// --- End Recipe Knowledge Check ---
 
-		// --- Proceed Only if Player Knows the Recipe ---
 		if (bPlayerKnowsRecipe)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Starting to cook recipe for: %s"), *ResultItemID.ToString());
-			// Activate cooking effects
-			CookingEffectParticles->ActivateSystem();
 
-			// --- Play Start Cooking Sound --- 
+			// --- Activate Cooking Effects ---
+			if (CookingSteamParticles) CookingSteamParticles->ActivateSystem(); // Activate steam
+			if (FireEffectComponent) FireEffectComponent->Activate(); // Activate fire
+			// -----------------------------
+
+			// --- Play Start Cooking Sound ---
 			if (StartCookingSound)
 			{
 				UGameplayStatics::PlaySoundAtLocation(this, StartCookingSound, GetActorLocation());
@@ -228,39 +241,23 @@ void AInteractablePot::StartCooking()
 
 			// Start the cooking timer
 			GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
-
-			// Optional: Disable adding more ingredients during cooking
-			// Optional: Provide feedback that cooking has started
 		}
 		else
 		{
-			// Player doesn't have the required recipe item in their inventory
 			UE_LOG(LogTemp, Warning, TEXT("Player attempted to cook %s, but does not have the required recipe item."), *ResultItemID.ToString());
-			
-			// --- Play Cooking Fail Sound (Unknown Recipe) --- 
 			if (CookingFailSound)
 			{
 				UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
 			}
-			// ---------------------------------------------
-
-			// Optional: Provide feedback to player (e.g., "You don't know this recipe yet." message or sound)
-			// Consider clearing ingredients or leaving them. Let's leave them for now.
 		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Invalid recipe based on ingredients."));
-
-		// --- Play Cooking Fail Sound (Invalid Ingredients) --- 
 		if (CookingFailSound)
 		{
 			UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
 		}
-		// --------------------------------------------------
-
-		// Optional: Provide failure feedback (sound, effect)
-		// Consider clearing ingredients or leaving them. Let's leave them for now.
 	}
 }
 
@@ -268,8 +265,10 @@ void AInteractablePot::OnCookingComplete()
 {
 	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Cooking complete!"));
 
-	// Deactivate cooking effects
-	CookingEffectParticles->DeactivateSystem();
+	// --- Deactivate Cooking Effects ---
+	if (CookingSteamParticles) CookingSteamParticles->DeactivateSystem(); // Deactivate steam
+	if (FireEffectComponent) FireEffectComponent->Deactivate(); // Deactivate fire
+	// -------------------------------
 
 	// Clear the timer handle
 	GetWorldTimerManager().ClearTimer(CookingTimerHandle);
@@ -283,109 +282,70 @@ void AInteractablePot::OnCookingComplete()
 		APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
 		if (PlayerController)
 		{
-            AWarriorHeroCharacter* PlayerChar = Cast<AWarriorHeroCharacter>(PlayerController->GetPawn());
-            if (PlayerChar)
-            {
-                UInventoryComponent* PlayerInventory = PlayerChar->GetInventoryComponent();
-                if (PlayerInventory)
-                {
-                    // Create the FSlotStruct for the item to add
-                    FSlotStruct ItemToAdd;
-                    const FString ContextString(TEXT("Finding Cooked Item Data"));
+			AWarriorHeroCharacter* PlayerChar = Cast<AWarriorHeroCharacter>(PlayerController->GetPawn());
+			if (PlayerChar)
+			{
+				UInventoryComponent* PlayerInventory = PlayerChar->GetInventoryComponent();
+				if (PlayerInventory)
+				{
+					FSlotStruct ItemToAdd;
+					const FString ContextString(TEXT("Finding Cooked Item Data"));
 					FInventoryItemStruct* CookedItemData = ItemDataTable ? ItemDataTable->FindRow<FInventoryItemStruct>(ResultItemID, ContextString, true) : nullptr;
 
-                    if (CookedItemData) // Check if we found item data for the result
-                    {
-                        ItemToAdd.ItemID.RowName = ResultItemID; 
-                        ItemToAdd.Quantity = 1; // Assuming cooking always yields 1
-                        // ItemToAdd.ItemID.DataTable = ItemDataTable; // Set if your AddItem requires it
-                        ItemToAdd.ItemType = CookedItemData->ItemType; // Correctly assign ItemType from Data Table
-                        
-                        // Attempt to add using AddItem(FSlotStruct)
-                        if (!PlayerInventory->AddItem(ItemToAdd)) // Assumes AddItem(FSlotStruct) exists
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Failed to add cooked item '%s' to player inventory (Inventory full?). Dropping item instead."), *ResultItemID.ToString());
-                            
-                            // --- Play Cooking Fail Sound (Inventory Full) --- 
-                            // (Could use CookingFailSound or a specific InventoryFull sound)
-                            if (CookingFailSound) 
-                            {
-                                UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
-                            }
-                            // ---------------------------------------------
+					if (CookedItemData)
+					{
+						ItemToAdd.ItemID.RowName = ResultItemID;
+						ItemToAdd.Quantity = 1;
+						ItemToAdd.ItemType = CookedItemData->ItemType;
 
-                            // TODO: Implement item dropping logic here if AddItem fails
-                            // Get item data again to know what mesh to spawn for dropping
-                            UStaticMesh* DroppedMesh = CookedItemData->Mesh.LoadSynchronous();
-                            if (DroppedMesh)
-                            {
-                                FVector DropLocation = GetActorLocation() + GetActorForwardVector() * 100.0f + FVector(0,0,50.0f); // Example drop location slightly in front and above pot
-                                FRotator DropRotation = FRotator::ZeroRotator;
-                                FActorSpawnParameters SpawnParams;
-                                SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-                                // Assume you have an AWorldItemActor class to represent dropped items
-                                // AWorldItemActor* DroppedItem = GetWorld()->SpawnActor<AWorldItemActor>(AWorldItemActor::StaticClass(), DropLocation, DropRotation, SpawnParams);
-                                // if (DroppedItem)
-                                // {
-                                //    DroppedItem->SetItemData(ResultItemID, 1); // Or pass the FInventoryItemStruct
-                                // }
-                                UE_LOG(LogTemp, Warning, TEXT("Item dropping not fully implemented yet."));
-                            }
-
-                        }
-                        else
-                        {
-                             UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Successfully added '%s' to player inventory."), *ResultItemID.ToString());
-                             
-                             // --- Play Cooking Success Sound --- 
-                             if (CookingSuccessSound)
-                             {
-                                 UGameplayStatics::PlaySoundAtLocation(this, CookingSuccessSound, GetActorLocation());
-                             }
-                             // ----------------------------------
-
-                             // Play success sound/effect?
-                             ClearIngredientsVisually(); // Clear visual meshes
-                             AddedIngredientIDs.Empty(); // Clear internal list
-                             NotifyWidgetUpdate();      // Update UI
-                        }
-                    }
-                     else
-                    {
-                        UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not find item data for the cooked result ID '%s' in ItemDataTable."), *ResultItemID.ToString());
-                    }
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not get InventoryComponent from PlayerCharacter."));
-                }
-            }
-            else
-            {
-                 UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not cast Player Pawn to AWarriorHeroCharacter."));
-            }
+						if (!PlayerInventory->AddItem(ItemToAdd))
+						{
+							UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Failed to add cooked item '%s' to player inventory (Inventory full?). Dropping item logic needed."), *ResultItemID.ToString());
+							if (CookingFailSound)
+							{
+								UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+							}
+							// Implement item dropping here if needed
+						}
+						else
+						{
+							UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Successfully added '%s' to player inventory."), *ResultItemID.ToString());
+							if (CookingSuccessSound)
+							{
+								UGameplayStatics::PlaySoundAtLocation(this, CookingSuccessSound, GetActorLocation());
+							}
+							ClearIngredientsVisually(); // Clear visual meshes & effects on success
+							AddedIngredientIDs.Empty();
+							NotifyWidgetUpdate();
+							return; // Exit early on success after clearing
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not find item data for the cooked result ID '%s' in ItemDataTable."), *ResultItemID.ToString());
+						if (CookingFailSound) UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+					}
+				}
+				else UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not get InventoryComponent from PlayerCharacter."));
+			}
+			else UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not cast Player Pawn to AWarriorHeroCharacter."));
 		}
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not get PlayerController."));
-        }
+		else UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Could not get PlayerController."));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Cooking finished but CheckRecipeInternal returned NAME_None."));
-		// Optionally play fail sound here too?
+		UE_LOG(LogTemp, Error, TEXT("AInteractablePot: Cooking finished but CheckRecipeInternal returned NAME_None (Invalid Recipe)."));
 		if (CookingFailSound)
 		{
 			UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
 		}
 	}
 
-	// These happen regardless of cooking success/failure if the timer finishes
+	// Clear ingredients visually and data if cooking failed or item couldn't be added
 	AddedIngredientIDs.Empty();
-	ClearIngredientsVisually(); // Clear visual meshes if they weren't cleared on success
+	ClearIngredientsVisually(); // This now also handles deactivating effects if they were active
 	NotifyWidgetUpdate();
 }
-
 
 FName AInteractablePot::CheckRecipeInternal()
 {
@@ -412,33 +372,31 @@ FName AInteractablePot::CheckRecipeInternal()
 
 		if (RecipeRow)
 		{
-            // Use correct member names: RequiredIngredients and ResultItem
 			if (RecipeRow->RequiredIngredients.Num() != SortedPotIngredients.Num())
 			{
 				continue; 
 			}
 
-            if (RecipeRow->RequiredIngredients.Num() == 0)
-            {
-                continue;
-            }
+			if (RecipeRow->RequiredIngredients.Num() == 0)
+			{
+				continue;
+			}
 
-			TArray<FName> SortedRecipeIngredients = RecipeRow->RequiredIngredients; // Use RequiredIngredients
+			TArray<FName> SortedRecipeIngredients = RecipeRow->RequiredIngredients;
 			SortedRecipeIngredients.Sort([](const FName& A, const FName& B) {
 				return A.ToString() < B.ToString();
 			});
 
 			if (SortedPotIngredients == SortedRecipeIngredients) 
 			{
-                // Use ResultItem for the output
-				UE_LOG(LogTemp, Log, TEXT("Recipe Match Found! Recipe: %s, Output: %s"), *RowName.ToString(), *RecipeRow->ResultItem.ToString()); // Use ResultItem
-				return RecipeRow->ResultItem; // Use ResultItem
+				UE_LOG(LogTemp, Log, TEXT("Recipe Match Found! Recipe: %s, Output: %s"), *RowName.ToString(), *RecipeRow->ResultItem.ToString());
+				return RecipeRow->ResultItem;
 			}
 		}
-        else
-        {
-             UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::CheckRecipeInternal - Could not find row %s or cast failed."), *RowName.ToString());
-        }
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::CheckRecipeInternal - Could not find row %s or cast failed."), *RowName.ToString());
+		}
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("No matching recipe found for current ingredients."));
@@ -462,20 +420,20 @@ void AInteractablePot::NotifyWidgetUpdate()
 
 const TArray<FName>& AInteractablePot::GetAddedIngredientIDs() const
 {
-    return AddedIngredientIDs;
+	return AddedIngredientIDs;
 }
 
 void AInteractablePot::SetCookingWidget(UCookingWidget* InWidget)
 {
-    CookingWidgetRef = InWidget;
+	CookingWidgetRef = InWidget;
 }
 
 UCookingWidget* AInteractablePot::GetCookingWidget() const
 {
-    return CookingWidgetRef.Get(); // Use Get() for TObjectPtr
+	return CookingWidgetRef.Get(); // Use Get() for TObjectPtr
 }
 
-// New function definition
+// Clears visual meshes and ensures effects are stopped
 void AInteractablePot::ClearIngredientsVisually()
 {
 	for (UStaticMeshComponent* MeshComp : IngredientMeshComponents)
@@ -485,5 +443,15 @@ void AInteractablePot::ClearIngredientsVisually()
 			MeshComp->DestroyComponent();
 		}
 	}
-	IngredientMeshComponents.Empty(); // Clear the array after destroying components
+	IngredientMeshComponents.Empty();
+
+	// Ensure effects are deactivated when clearing visuals
+	if (CookingSteamParticles && CookingSteamParticles->IsActive())
+	{ // Use IsActive() which returns true if component is active and system is running
+		CookingSteamParticles->DeactivateSystem();
+	}
+	if (FireEffectComponent && FireEffectComponent->IsActive())
+	{ // Use IsActive() for Niagara Component as well
+		FireEffectComponent->Deactivate();
+	}
 } 

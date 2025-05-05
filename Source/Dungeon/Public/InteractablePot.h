@@ -11,6 +11,10 @@
 #include "Inventory/CookingRecipeStruct.h" // Include for FCookingRecipeStruct (Adjust path as needed)
 #include "Inventory/InvenItemStruct.h" // Include for item definition lookup
 #include "Inventory/InvenItemStruct.h" // Include for InventoryItemStruct
+#include "Particles/ParticleSystem.h" // Include for UParticleSystem
+#include "ProceduralMeshComponent.h" // Include for ProceduralMeshComponent (Ensure this path is correct)
+#include "NiagaraComponent.h" // Include for Niagara Component
+#include "NiagaraSystem.h"    // Include for Niagara System asset
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
@@ -61,6 +65,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* PotMesh;
 
+	// --- New Components ---
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta=(AllowPrivateAccess = "true"))
+	UStaticMeshComponent* FirewoodMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta=(AllowPrivateAccess = "true"))
+	UNiagaraComponent* FireEffectComponent;
+
+	// Niagara system asset to use for the fire effect
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Visuals")
+	UNiagaraSystem* FireNiagaraSystem;
+	// --- End New Components ---
+
 	// Overlap volume to detect ingredients (Inside the pot)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USphereComponent* IngredientDetectionVolume;
@@ -69,9 +85,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UBoxComponent* InteractionVolume;
 
-	// Particle effect for cooking (steam, bubbles, etc.)
+	// Particle effect for cooking (steam, bubbles, etc.) - Using Cascade for this one for now
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UParticleSystemComponent* CookingEffectParticles;
+	UParticleSystemComponent* CookingSteamParticles; // Still using UParticleSystemComponent
 
 	// The Data Table containing cooking recipes
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Data")
@@ -124,7 +140,7 @@ protected:
 	// Returns the FName ID of the resulting item, or NAME_None if no valid recipe.
 	FName CheckRecipeInternal();
 
-	// Destroys the visual representations (StaticMeshComponents) of the added ingredients
+	// Destroys the visual representations (StaticMeshComponents) of the added ingredients and resets effects
 	void ClearIngredientsVisually();
 
 	// --- Sound Effects --- 
