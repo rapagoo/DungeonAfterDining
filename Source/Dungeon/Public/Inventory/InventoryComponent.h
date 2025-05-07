@@ -14,6 +14,9 @@ class UEnhancedInputComponent;
 class AInventoryItemActor;
 struct FSlotStruct;
 
+// Declare the delegate
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class DUNGEON_API UInventoryComponent : public UActorComponent
 {
@@ -22,6 +25,10 @@ class DUNGEON_API UInventoryComponent : public UActorComponent
 public:
 	// Sets default values for this component's properties
 	UInventoryComponent();
+
+	// Delegate to broadcast when inventory changes
+	UPROPERTY(BlueprintAssignable, Category = "Inventory")
+	FOnInventoryUpdated OnInventoryUpdated;
 
 	// --- Inventory Data ---
 

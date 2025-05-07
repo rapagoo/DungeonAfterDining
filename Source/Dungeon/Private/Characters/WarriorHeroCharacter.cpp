@@ -17,6 +17,8 @@
 #include "Components/UI/HeroUIComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Inventory/InventoryComponent.h"
+#include "Inventory/MyPlayerState.h"
+#include "GameFramework/PlayerState.h"
 #include "EnhancedInputComponent.h"
 #include "Components/SphereComponent.h"
 #include "Interactables/InteractableTable.h"
@@ -37,6 +39,7 @@
 #include "NiagaraFunctionLibrary.h" // Added for Niagara SpawnSystem
 #include "NiagaraComponent.h" // Added for UNiagaraSystem type
 #include "InteractablePot.h" // Needed for casting to AInteractablePot
+#include "MyGameInstance.h" // Include for GameInstance
 
 AWarriorHeroCharacter::AWarriorHeroCharacter()
 {
@@ -115,14 +118,20 @@ bool AWarriorHeroCharacter::IsInCookingMode() const
 void AWarriorHeroCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
-	
-	if (!CharacterStartUpData.IsNull())
+
+	// Inventory loading moved to BeginPlay where GameInstance is readily available
+
+	// Initialize ASC 
+	if (WarriorAbilitySystemComponent) 
 	{
-		if (UDataAsset_StartUpDataBase* LoadedData = CharacterStartUpData.LoadSynchronous())
-		{
-			LoadedData->GiveToAbilitySystemComponent(WarriorAbilitySystemComponent);
-		}
+		WarriorAbilitySystemComponent->InitAbilityActorInfo(this, this);
+		ensureMsgf(!CharacterStartUpData.IsNull(), TEXT("Forgot to assign start up data to %s"), *GetName());
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::PossessedBy for %s by Controller %s. PlayerState: %s."),
+		*GetName(),
+		NewController ? *NewController->GetName() : TEXT("null Controller"),
+		GetPlayerState() ? *GetPlayerState()->GetName() : TEXT("null PlayerState"));
 }
 
 void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -214,31 +223,77 @@ void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 void AWarriorHeroCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::BeginPlay for %s. PlayerState: %s, Controller: %s"),
+		*GetName(),
+		GetPlayerState() ? *GetPlayerState()->GetName() : TEXT("null PlayerState"),
+		GetController() ? *GetController()->GetName() : TEXT("null Controller"));
 	
-	// Scene Capture Component 2D 설정 (블루프린트 "Show Only Actor Components" 구현)
+	// --- Load Inventory from GameInstance --- 
+	UGameInstance* GI = UGameplayStatics::GetGameInstance(this);
+	UMyGameInstance* MyGI = Cast<UMyGameInstance>(GI);
+
+	if (MyGI && InventoryComponent)
+	{
+		// Check if the GameInstance has temporary inventory data to transfer
+		if (MyGI->TempInventoryToTransfer.Num() > 0)
+		{
+			UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::BeginPlay: Loading %d items from GameInstance TempInventoryToTransfer."), MyGI->TempInventoryToTransfer.Num());
+			InventoryComponent->InventorySlots = MyGI->TempInventoryToTransfer;
+			
+			// IMPORTANT: Clear the temporary data in GameInstance after loading!
+			MyGI->TempInventoryToTransfer.Empty();
+			UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::BeginPlay: Cleared GameInstance TempInventoryToTransfer."));
+			
+			// Broadcast update to UI
+			InventoryComponent->OnInventoryUpdated.Broadcast();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::BeginPlay: No inventory data found in GameInstance TempInventoryToTransfer. Using default/existing inventory."));
+		}
+	}
+	else
+	{
+		if (!MyGI) UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::BeginPlay: Cast to UMyGameInstance failed! Cannot load inventory from GI."));
+		if (!InventoryComponent) UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::BeginPlay: InventoryComponent is null! Cannot load inventory."));
+	}
+
+	// Scene Capture Component 2D 설정
 	if (SceneCaptureComponent2D)
 	{
-		// 기본 설정
 		SceneCaptureComponent2D->bCaptureEveryFrame = true;
-		
-		// Show Only Actor Components 설정 - 자신(Self)의 컴포넌트만 표시
 		SceneCaptureComponent2D->ShowOnlyActorComponents(this);
-		
-		// 추가 설정
 		SceneCaptureComponent2D->CaptureSource = ESceneCaptureSource::SCS_SceneColorHDR;
 	}
 
-    // Bind overlap events for the interaction sphere
-    if (InteractionSphere)
-    {
-        InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereBeginOverlap);
-        InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereEndOverlap);
-        UE_LOG(LogTemp, Log, TEXT("InteractionSphere overlap events bound."));
-    }
-    else
-    {
-         UE_LOG(LogTemp, Warning, TEXT("InteractionSphere is null in BeginPlay, overlap events not bound."));
-    }
+	// Interaction Sphere binding
+	if (InteractionSphere)
+	{
+		InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereBeginOverlap);
+		InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWarriorHeroCharacter::OnInteractionSphereEndOverlap);
+		UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::BeginPlay: InteractionSphere overlap events bound for %s."), *GetName());
+	}
+	else
+	{
+		 UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::BeginPlay: InteractionSphere is null for %s, overlap events not bound."), *GetName());
+	}
+
+	// Add default input mapping context 
+	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+		{
+			if (InputConfigDataAsset && InputConfigDataAsset->DefaultMappingContext)
+			{
+				Subsystem->AddMappingContext(InputConfigDataAsset->DefaultMappingContext, 0);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::BeginPlay: InputConfigDataAsset or DefaultMappingContext is null for %s. Cannot add default input mapping context."), *GetName());
+			}
+		}
+	}
 }
 
 void AWarriorHeroCharacter::Input_Move(const FInputActionValue& InputActionValue)
@@ -815,3 +870,35 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
 
 #pragma region Components Getters
 // ... existing code ...
+
+// Add the new EndPlay function
+void AWarriorHeroCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::EndPlay called with reason: %s for character %s"), *UEnum::GetValueAsString(EndPlayReason), *GetName());
+
+    // // --- The following inventory saving logic is MOVED to UMyGameInstance::HandlePreLoadMap ---
+    // // Save inventory to PlayerState specifically on LevelTransition or if explicitly removed for travel,
+    // // or if Destroyed (which happens in PIE map travel).
+    // if (EndPlayReason == EEndPlayReason::LevelTransition || 
+    //     EndPlayReason == EEndPlayReason::RemovedFromWorld || 
+    //     EndPlayReason == EEndPlayReason::Destroyed)
+    // {
+    //     AMyPlayerState* MyPS = GetPlayerState<AMyPlayerState>();
+    //     if (MyPS && InventoryComponent)
+    //     {
+    //         UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::EndPlay: Saving %d inventory items from %s to PlayerState"), InventoryComponent->InventorySlots.Num(), *GetName());
+    //         MyPS->PersistentInventorySlots = InventoryComponent->InventorySlots;
+    //     }
+    //     else
+    //     {
+    //         if (!MyPS) UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::EndPlay: MyPlayerState is null. CANNOT SAVE INVENTORY for %s."), *GetName());
+    //         if (!InventoryComponent) UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::EndPlay: InventoryComponent is null. CANNOT SAVE INVENTORY for %s."), *GetName());
+    //     }
+    // }
+    // else
+    // {
+    //    UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::EndPlay: Condition for saving inventory not met. Reason: %s"), *UEnum::GetValueAsString(EndPlayReason));
+    // }
+
+	Super::EndPlay(EndPlayReason);
+}

@@ -2,4 +2,10 @@
 
 
 #include "GameMode/DungeonBabGameMode.h"
+#include "Inventory/MyPlayerState.h"
+
+ADungeonBabGameMode::ADungeonBabGameMode()
+{
+    PlayerStateClass = AMyPlayerState::StaticClass();
+}
 

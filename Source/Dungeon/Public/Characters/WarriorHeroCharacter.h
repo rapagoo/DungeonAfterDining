@@ -19,6 +19,7 @@ struct FInputActionValue;
 class UHeroCombatComponent;
 class UHeroUIComponent;
 class UInventoryComponent;
+class AMyPlayerState;
 class AInventoryItemActor;
 class UParticleSystem;
 class USoundBase;
@@ -57,8 +58,10 @@ protected:
 	virtual void PossessedBy(AController* NewController) override;
 	//~ End APawn Interface
 
+	//~ Begin ACharacter Interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// Inventory Component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))

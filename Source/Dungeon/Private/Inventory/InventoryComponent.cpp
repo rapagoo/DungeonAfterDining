@@ -224,9 +224,9 @@ void UInventoryComponent::HandlePickup()
 
 	if (TraceForItem(FoundItemData, FoundItemActor))
 	{
-		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace found item: %s (Actor: %s)"), 
-			*FoundItemData.ItemID.RowName.ToString(), 
-			FoundItemActor ? *FoundItemActor->GetName() : TEXT("None"));
+		// UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace found item: %s (Actor: %s)"), 
+		// 	*FoundItemData.ItemID.RowName.ToString(), 
+		// 	FoundItemActor ? *FoundItemActor->GetName() : TEXT("None"));
 		
 		bool bAdded = AddItem(FoundItemData);
 		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] AddItem returned: %s"), bAdded ? TEXT("True") : TEXT("False"));
@@ -248,7 +248,7 @@ void UInventoryComponent::HandlePickup()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace did not find any suitable item."));
+		// UE_LOG(LogTemp, Log, TEXT("[HandlePickup] Trace did not find any suitable item."));
 	}
 }
 
@@ -406,21 +406,21 @@ bool UInventoryComponent::TraceForItem(FSlotStruct& OutItem, AInventoryItemActor
 
 	if (bHit && HitResult.GetActor())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[TraceForItem] SphereTrace hit actor: %s (Component: %s)"), 
-			*HitResult.GetActor()->GetName(), 
-			HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("None"));
+		//UE_LOG(LogTemp, Log, TEXT("[TraceForItem] SphereTrace hit actor: %s (Component: %s)"), 
+			//*HitResult.GetActor()->GetName(), 
+			//HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("None"));
 		
 		AInventoryItemActor* HitItemActor = Cast<AInventoryItemActor>(HitResult.GetActor());
 		if (HitItemActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Successfully cast hit actor to AInventoryItemActor."));
+			//UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Successfully cast hit actor to AInventoryItemActor."));
 			OutItemActor = HitItemActor;
 			OutItem = HitItemActor->GetItemData(); // Use the getter
 			return true;
 		}
 		else
 		{
-			UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Failed to cast hit actor (%s) to AInventoryItemActor."), *HitResult.GetActor()->GetName());
+			//UE_LOG(LogTemp, Log, TEXT("[TraceForItem] Failed to cast hit actor (%s) to AInventoryItemActor."), *HitResult.GetActor()->GetName());
 		}
 	}
 	// else { UE_LOG(LogTemp, VeryVerbose, TEXT("[TraceForItem] SphereTrace did not hit anything.")); } // Reduce log spam
