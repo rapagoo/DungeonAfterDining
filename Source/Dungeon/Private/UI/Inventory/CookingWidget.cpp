@@ -31,7 +31,18 @@ void UCookingWidget::NativeConstruct()
 	if (CookButton)
 	{
 		CookButton->OnClicked.AddDynamic(this, &UCookingWidget::OnCookClicked);
-		CookButton->SetIsEnabled(true); // Cook button might be enabled by default, Pot checks ingredients
+		CookButton->SetIsEnabled(false);
+	}
+	if (CollectButton)
+	{
+		CollectButton->OnClicked.AddDynamic(this, &UCookingWidget::OnCollectButtonClicked);
+		CollectButton->SetIsEnabled(false);
+		CollectButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (StatusText)
+	{
+		StatusText->SetText(FText::FromString(TEXT("")));
 	}
 
 	NearbyIngredient = nullptr;
@@ -187,24 +198,149 @@ void UCookingWidget::OnCookClicked()
 	}
 }
 
-void UCookingWidget::UpdateIngredientList(const TArray<FName>& IngredientIDs)
+void UCookingWidget::OnCollectButtonClicked()
 {
-	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateIngredientList called with %d ingredients."), IngredientIDs.Num());
+    UE_LOG(LogTemp, Log, TEXT("Collect Button Clicked!"));
+    if (AssociatedInteractable)
+    {
+        AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+        if (Pot)
+        {
+            UE_LOG(LogTemp, Log, TEXT("Attempting to collect item from Pot: %s"), *Pot->GetName());
+            bool bCollected = Pot->CollectCookedItem();
+            if (bCollected)
+            {
+                UE_LOG(LogTemp, Log, TEXT("UCookingWidget: Item collected successfully via UI."));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UCookingWidget: CollectCookedItem returned false (inventory full or item not ready?)."));
+            }
+            // Pot->CollectCookedItem() should call NotifyWidgetUpdate internally to refresh the widget.
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Collect Button Clicked, but AssociatedInteractable is not an AInteractablePot."));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Collect Button Clicked, but AssociatedInteractable is null."));
+    }
+}
 
-	if (IngredientsList)
-	{
-		IngredientsList->ClearChildren();
+void UCookingWidget::UpdateWidgetState(const TArray<FName>& IngredientIDs, bool bIsPotCooking, bool bIsPotCookingComplete, bool bIsPotBurnt, FName CookedResultID)
+{
+    UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateWidgetState (C++) - Cooking: %d, Complete: %d, Burnt: %d. Ingredients: %d"),
+        bIsPotCooking, bIsPotCookingComplete, bIsPotBurnt, IngredientIDs.Num());
 
-		for (const FName& IngredientID : IngredientIDs)
-		{
-			UE_LOG(LogTemp, Log, TEXT("  - Adding UI entry for: %s"), *IngredientID.ToString());
-			UE_LOG(LogTemp, Warning, TEXT("Actual UI creation for ingredient '%s' needs implementation (using WidgetTree or BP)."), *IngredientID.ToString());
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::UpdateIngredientList - IngredientsList is not bound or null."));
-	}
+    // 1. Update Ingredient Display (C++ Logic)
+    if (IngredientsList)
+    {
+        IngredientsList->ClearChildren(); 
+
+        for (const FName& IngredientID : IngredientIDs)
+        {
+            UTextBlock* NewIngredientText = NewObject<UTextBlock>(this, UTextBlock::StaticClass()); 
+            if (NewIngredientText)
+            {
+                FString DisplayName = IngredientID.ToString(); 
+                AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+                
+                UDataTable* CurrentItemTable = Pot ? Pot->GetItemDataTable() : nullptr;
+                if (CurrentItemTable && !IngredientID.IsNone()) 
+                {
+                    const FString ContextString(TEXT("Fetching Ingredient Name for Widget List"));
+                    FInventoryItemStruct* ItemData = CurrentItemTable->FindRow<FInventoryItemStruct>(IngredientID, ContextString);
+                    if (ItemData && !ItemData->Name.IsEmpty()) 
+                    {
+                        DisplayName = ItemData->Name.ToString();
+                    }
+                    else if(ItemData)
+                    {
+                         UE_LOG(LogTemp, Warning, TEXT("UCookingWidget: ItemData found for %s in list, but Name is empty. Using RowName."), *IngredientID.ToString());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("UCookingWidget: Could not find ItemData for ingredient ID: %s in ItemDataTable for list. Using RowName."), *IngredientID.ToString());
+                    }
+                }
+                NewIngredientText->SetText(FText::FromString(DisplayName));
+                IngredientsList->AddChildToVerticalBox(NewIngredientText); 
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("Failed to create UTextBlock for Ingredient ID: %s"), *IngredientID.ToString());
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("IngredientsList (UVerticalBox*) is null in CookingWidget. Cannot display ingredients."));
+    }
+
+    // 2. Update Status Text and Button States
+    if (StatusText)
+    {
+        if (bIsPotBurnt)
+        {
+            StatusText->SetText(FText::FromString(TEXT("타버렸습니다!")));
+        }
+        else if (bIsPotCookingComplete)
+        {
+            FString ItemName = CookedResultID.ToString(); 
+            AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+
+            UDataTable* CurrentItemTableForResult = Pot ? Pot->GetItemDataTable() : nullptr;
+            if (CurrentItemTableForResult && !CookedResultID.IsNone())
+            {
+                const FString ContextString(TEXT("Fetching Cooked Item Name for Widget Status"));
+                FInventoryItemStruct* ItemData = CurrentItemTableForResult->FindRow<FInventoryItemStruct>(CookedResultID, ContextString);
+                if (ItemData && !ItemData->Name.IsEmpty())
+                {
+                    ItemName = ItemData->Name.ToString();
+                }
+                else if(ItemData)
+                {
+                     UE_LOG(LogTemp, Warning, TEXT("UCookingWidget: ItemData found for cooked result %s, but Name is empty. Using RowName for status."), *CookedResultID.ToString());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("UCookingWidget: Could not find ItemData for cooked result ID: %s in ItemDataTable for status. Using RowName."), *CookedResultID.ToString());
+                }
+            }
+            StatusText->SetText(FText::Format(FText::FromString(TEXT("{0} 완성! 획득하세요.")), FText::FromString(ItemName)));
+        }
+        else if (bIsPotCooking)
+        {
+            StatusText->SetText(FText::FromString(TEXT("요리 중...")));
+        }
+        else // Idle
+        {
+            if (IngredientIDs.Num() > 0)
+            {
+                StatusText->SetText(FText::FromString(TEXT("요리하시겠습니까?")));
+            }
+            else
+            {
+                StatusText->SetText(FText::FromString(TEXT("재료를 넣어주세요.")));
+            }
+        }
+    }
+
+    if (CookButton)
+    {
+        bool bCanCook = !bIsPotCooking && !bIsPotCookingComplete && !bIsPotBurnt && IngredientIDs.Num() > 0;
+        CookButton->SetIsEnabled(bCanCook);
+        CookButton->SetVisibility(bCanCook ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+
+    if (CollectButton)
+    {
+        bool bCanCollect = bIsPotCookingComplete && !bIsPotBurnt;
+        CollectButton->SetIsEnabled(bCanCollect);
+        CollectButton->SetVisibility(bCanCollect ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
 }
 
 void UCookingWidget::SetAssociatedTable(AInteractableTable* Table)
@@ -216,13 +352,17 @@ void UCookingWidget::SetAssociatedTable(AInteractableTable* Table)
 	AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
 	if (Pot)
 	{
-		UpdateIngredientList(Pot->GetAddedIngredientIDs());
+		// Pot will call NotifyWidgetUpdate which calls UpdateWidgetState
+        // This ensures the widget reflects the pot's current state when first associated
+        Pot->NotifyWidgetUpdate();
 	}
 	else
 	{
-		UpdateIngredientList({});
+        // If not a pot, or pot is null, set a default "empty" state
+        UpdateWidgetState({}, false, false, false, NAME_None);
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::SetAssociatedTable - Associated table is not an InteractablePot or is null. Widget will show default state."));
 	}
-	UpdateNearbyIngredient(FindNearbySlicedIngredient());
+	UpdateNearbyIngredient(FindNearbySlicedIngredient()); // This seems to be for a different "add ingredient to inventory" feature
 }
 
 AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
@@ -235,12 +375,17 @@ AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
 	UBoxComponent* DetectionArea = AssociatedInteractable->FindComponentByClass<UBoxComponent>();
 	if(!DetectionArea)
 	{
-		DetectionArea = Cast<UBoxComponent>(AssociatedInteractable->GetDefaultSubobjectByName(FName("IngredientArea")));
+        // Fallback to a common name if the direct component isn't found (e.g. inherited)
+		DetectionArea = Cast<UBoxComponent>(AssociatedInteractable->GetDefaultSubobjectByName(FName("InteractionVolume")));
+        if(!DetectionArea)
+        {
+            DetectionArea = Cast<UBoxComponent>(AssociatedInteractable->GetDefaultSubobjectByName(FName("IngredientArea")));
+        }
 	}
 
 	if (!DetectionArea)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("FindNearbySlicedIngredient: Could not find a suitable BoxComponent (like 'IngredientArea') on %s."), *AssociatedInteractable->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("FindNearbySlicedIngredient: Could not find a suitable BoxComponent on %s."), *AssociatedInteractable->GetName());
 		return nullptr;
 	}
 
@@ -256,7 +401,6 @@ AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
 			return ItemActor;
 		}
 	}
-
 	return nullptr;
 }
 

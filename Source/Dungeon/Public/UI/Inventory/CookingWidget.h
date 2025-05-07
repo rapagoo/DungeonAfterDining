@@ -14,6 +14,10 @@
 // Forward declaration for the item actor
 class AInventoryItemActor;
 class AInteractableTable;
+class AInteractablePot;
+class UButton;
+class UTextBlock;
+class UVerticalBox;
 
 /**
  * Widget for the cooking interface.
@@ -31,35 +35,34 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cooking Logic")
 	void SetAssociatedTable(AInteractableTable* Table);
 
-	/** Function called by AInteractablePot to update the ingredient list display */
-	UFUNCTION(BlueprintCallable, Category = "Cooking UI")
-	void UpdateIngredientList(const TArray<FName>& IngredientIDs);
-
-	/** Function to add an ingredient to the internal list and potentially UI - DEPRECATED */
-	// UFUNCTION(BlueprintCallable, Category = "Cooking Logic")
-	// void AddIngredient(FName IngredientID);
-
 	/** Finds the first InventoryItemActor that is sliced and near the interactable */
 	AInventoryItemActor* FindNearbySlicedIngredient();
+
+	/** NEW: Called by InteractablePot to update the entire widget's state */
+	void UpdateWidgetState(const TArray<FName>& IngredientIDs, bool bIsPotCooking, bool bIsPotCookingComplete, bool bIsPotBurnt, FName CookedResultID);
 
 protected:
 	virtual void NativeConstruct() override;
 
 	/** Button to interact with nearby ingredient (Add to Pot originally, now Add to Inventory) */
 	UPROPERTY(meta = (BindWidget))
-	class UButton* AddIngredientButton;
+	UButton* AddIngredientButton;
 
 	/** Button to initiate cooking */
 	UPROPERTY(meta = (BindWidget))
-	class UButton* CookButton;
+	UButton* CookButton;
+
+	/** NEW: Button to collect the cooked item */
+	UPROPERTY(meta = (BindWidget))
+	UButton* CollectButton;
 
 	/** Vertical box to list the added ingredients */
 	UPROPERTY(meta = (BindWidget))
-	class UVerticalBox* IngredientsList;
+	UVerticalBox* IngredientsList;
 
-	/** Data table containing cooking recipes - DEPRECATED in Widget */
-	// UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking")
-	// UDataTable* RecipeDataTable;
+	/** NEW: TextBlock to display current cooking status */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* StatusText;
 
 	/** The class of widget to represent a single ingredient in the list */
 	UPROPERTY(EditDefaultsOnly, Category="Cooking UI")
@@ -68,10 +71,6 @@ protected:
 	/** Reference to the table/pot this widget is associated with */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Logic")
 	AInteractableTable* AssociatedInteractable; // Renamed for clarity
-
-	/** Array to keep track of added ingredient IDs - DEPRECATED in Widget */
-	// UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Logic")
-	// TArray<FName> AddedIngredientIDs;
 
 	/** Pointer to the item actor currently detected nearby on the table/pot surface */
 	UPROPERTY()
@@ -85,7 +84,11 @@ protected:
 	UFUNCTION()
 	void OnCookClicked();
 
-	/** Checks if the currently added ingredients match any recipe - DEPRECATED */
-	// bool CheckRecipe(FName& OutResultItemID) const;
+	/** NEW: Called when the Collect button is clicked */
+	UFUNCTION()
+	void OnCollectButtonClicked();
+
+	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
+	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);
 
 }; 
