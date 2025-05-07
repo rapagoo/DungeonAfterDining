@@ -119,19 +119,38 @@ void AWarriorHeroCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	// Inventory loading moved to BeginPlay where GameInstance is readily available
-
 	// Initialize ASC 
 	if (WarriorAbilitySystemComponent) 
 	{
 		WarriorAbilitySystemComponent->InitAbilityActorInfo(this, this);
-		ensureMsgf(!CharacterStartUpData.IsNull(), TEXT("Forgot to assign start up data to %s"), *GetName());
+		ensureMsgf(!CharacterStartUpData.IsNull(), TEXT("Forgot to assign start up data to %s in %s"), *GetName(), *StaticClass()->GetName());
+		
+		// --- BEGIN RESTORED SECTION ---
+		// Load and apply startup data (abilities, effects, attributes)
+		if (!CharacterStartUpData.IsNull())
+		{
+			if (UDataAsset_HeroStartUpData* LoadedData = Cast<UDataAsset_HeroStartUpData>(CharacterStartUpData.LoadSynchronous()))
+			{
+				UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::PossessedBy: Applying CharacterStartUpData for %s"), *GetName());
+				LoadedData->GiveToAbilitySystemComponent(WarriorAbilitySystemComponent);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("AWarriorHeroCharacter::PossessedBy: Failed to load CharacterStartUpData for %s"), *GetName());
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AWarriorHeroCharacter::PossessedBy: CharacterStartUpData is null for %s. Cannot apply startup abilities/attributes."), *GetName());
+		}
+		// --- END RESTORED SECTION ---
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("AWarriorHeroCharacter::PossessedBy for %s by Controller %s. PlayerState: %s."),
 		*GetName(),
 		NewController ? *NewController->GetName() : TEXT("null Controller"),
-		GetPlayerState() ? *GetPlayerState()->GetName() : TEXT("null PlayerState"));
+		GetPlayerState() ? *GetPlayerState()->GetName() : TEXT("null PlayerState")
+	);
 }
 
 void AWarriorHeroCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

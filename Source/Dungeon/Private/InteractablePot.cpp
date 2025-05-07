@@ -23,6 +23,7 @@
 #include "NiagaraComponent.h" // Include Niagara Component header
 #include "NiagaraFunctionLibrary.h" // Include Niagara Function Library for spawning systems if needed, and managing components
 #include "Materials/MaterialInstanceDynamic.h" // Include for MID
+#include "Components/AudioComponent.h" // Make sure this is included, though already in .h it's good practice for .cpp if directly used for creation
 
 // Sets default values
 AInteractablePot::AInteractablePot()
@@ -69,6 +70,12 @@ AInteractablePot::AInteractablePot()
 	// Note: The actual Niagara System asset (FireNiagaraSystem) is assigned in the Blueprint defaults.
 	// --- End Fire Effect Niagara Component ---
 
+	// --- Create Fire Audio Component ---
+	FireAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("FireAudioComponent"));
+	FireAudioComponent->SetupAttachment(RootComponent); // Or FirewoodMesh if preferred
+	FireAudioComponent->bAutoActivate = false; // Don't play on spawn
+	// --- End Fire Audio Component ---
+
 	CookingWidgetRef = nullptr; // Initialize widget reference
 
 	// DataTables are now expected to be assigned via Blueprint defaults.
@@ -113,6 +120,22 @@ void AInteractablePot::BeginPlay()
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("AInteractablePot: FireEffectComponent is null in BeginPlay. Cannot set asset or scale."));
+	}
+
+	if (FireAudioComponent && FireLoopSound)
+	{
+		FireAudioComponent->SetSound(FireLoopSound);
+	}
+	else
+	{
+		if (!FireLoopSound)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: FireLoopSound is not assigned in Blueprint defaults for %s."), *GetName());
+		}
+		if (!FireAudioComponent)
+		{
+			UE_LOG(LogTemp, Error, TEXT("AInteractablePot: FireAudioComponent is null in BeginPlay for %s."), *GetName());
+		}
 	}
 }
 
@@ -401,6 +424,17 @@ void AInteractablePot::StartCooking()
 			UGameplayStatics::PlaySoundAtLocation(this, StartCookingSound, GetActorLocation());
 		}
 		// --------------------------------
+
+		// Play fire sound
+		if (FireAudioComponent && FireAudioComponent->Sound) // Check if sound is set
+		{
+			FireAudioComponent->Play();
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Playing fire sound."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Cannot play fire sound - FireAudioComponent or Sound is null."));
+		}
 
 		NotifyWidgetUpdate(); // Update UI to show cooking state
 	}
@@ -734,6 +768,13 @@ void AInteractablePot::ClearIngredientsAndData(bool bNotifyWidget /*= true*/)
 	bIsBurnt = false;
 	CookingStartTime = 0.0f;
     BurningStartTime = 0.0f;
+
+	// Stop fire sound
+	if (FireAudioComponent && FireAudioComponent->IsPlaying())
+	{
+		FireAudioComponent->Stop();
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Stopping fire sound in ClearIngredientsAndData."));
+	}
 
 	if (bNotifyWidget)
 	{

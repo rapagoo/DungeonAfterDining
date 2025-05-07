@@ -15,6 +15,7 @@
 #include "ProceduralMeshComponent.h" // Include for ProceduralMeshComponent (Ensure this path is correct)
 #include "NiagaraComponent.h" // Include for Niagara Component
 #include "NiagaraSystem.h"    // Include for Niagara System asset
+#include "Components/AudioComponent.h"
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
@@ -229,6 +230,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
 	TObjectPtr<USoundBase> ItemBurntSound; // Use TObjectPtr
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
+	TObjectPtr<USoundBase> FireLoopSound;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") 
+	TObjectPtr<UAudioComponent> FireAudioComponent;
 
 	// --- Protected Functions ---
 	// Function called when an ingredient actor overlaps the detection volume (DEPRECATED for adding items)
