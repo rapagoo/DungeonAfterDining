@@ -57,4 +57,7 @@ public:
 	static void CountDown(const UObject* WorldContextObject, float TotalTime, float UpdateInterval, 
 		float& OutRemainingTime, EWarriorCountDownActionInput CountDownInput, 
 		UPARAM(DisplayName = "Output") EWarriorCountDownActionOutput& CountDownOutput, FLatentActionInfo LatentInfo);
+
+	UFUNCTION(BlueprintCallable, Category = "Warrior|FunctionLibrary", meta = (WorldContext = "WorldContextObject"))
+	static void ToggleInputMode(const UObject* WorldContextObject, EWarriorInputMode InInputMode);
 };
