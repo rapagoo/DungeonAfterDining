@@ -226,9 +226,9 @@ void USlotWidget::UseItemInSlot()
 	}
 
 	// --- Item Usage Logic (Specifically for Eatables based on BP) ---
-	if (ItemData.ItemType == EInventoryItemType::EIT_Eatables)
+	if (ItemData.ItemType == EInventoryItemType::EIT_Eatables || ItemData.ItemType == EInventoryItemType::EIT_Food)
 	{
-		UE_LOG(LogTemp, Log, TEXT("Using Eatables item."));
+		UE_LOG(LogTemp, Log, TEXT("Using Eatables or Food item."));
 
 		if (!HealEffectClass)
 		{
@@ -287,6 +287,6 @@ void USlotWidget::UseItemInSlot()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UseItemInSlot: Item type is not Eatables, usage not implemented."));
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInSlot: Item type is not Eatables or Food, usage not implemented for type %s."), *UEnum::GetValueAsString(ItemData.ItemType));
 	}
 } 
