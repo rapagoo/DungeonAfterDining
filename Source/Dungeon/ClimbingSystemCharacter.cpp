@@ -5,12 +5,15 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/CustomMovementComponent.h"
+#include "Inventory/InventoryComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "MotionWarpingComponent.h"
+#include "MyGameInstance.h"
+#include "Kismet/GameplayStatics.h"
 
 #include "WarriorDebugHelper.h"
 
@@ -57,6 +60,8 @@ AClimbingSystemCharacter::AClimbingSystemCharacter(const FObjectInitializer& Obj
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
 	MotionWarpingComponent = CreateDefaultSubobject<UMotionWarpingComponent>(TEXT("MotionWarpingComp"));
+
+	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 
 }
 
@@ -105,9 +110,22 @@ void AClimbingSystemCharacter::RemoveInputMappingContext(UInputMappingContext* C
 
 void AClimbingSystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
+		// Bind Inventory actions first
+		if (InventoryComponent)
+		{
+			InventoryComponent->SetupInputBinding(EnhancedInputComponent);
+			UE_LOG(LogTemplateCharacter, Log, TEXT("InventoryComponent input binding setup called for %s"), *GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemplateCharacter, Error, TEXT("InventoryComponent is null on %s during SetupPlayerInputComponent"), *GetName());
+		}
+
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
@@ -211,5 +229,39 @@ void AClimbingSystemCharacter::OnClimbHopActionStarted(const FInputActionValue& 
 	if (CustomMovementComponent)
 	{
 		CustomMovementComponent->RequestHopping();
+	}
+}
+
+void AClimbingSystemCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Attempt to load inventory from GameInstance
+	UGameInstance* GI = UGameplayStatics::GetGameInstance(this);
+	if (UMyGameInstance* MyGI = Cast<UMyGameInstance>(GI))
+	{
+		if (InventoryComponent) // Ensure InventoryComponent is valid
+		{
+			if (MyGI->TempInventoryToTransfer.Num() > 0)
+			{
+				UE_LOG(LogTemplateCharacter, Log, TEXT("%s::BeginPlay: Loading %d items from GameInstance TempInventoryToTransfer."), *GetName(), MyGI->TempInventoryToTransfer.Num());
+				InventoryComponent->InventorySlots = MyGI->TempInventoryToTransfer;
+				// Optionally, update UI or other components that depend on inventory here
+				MyGI->TempInventoryToTransfer.Empty();
+				UE_LOG(LogTemplateCharacter, Log, TEXT("%s::BeginPlay: Cleared GameInstance TempInventoryToTransfer."), *GetName());
+			}
+			else
+			{
+				UE_LOG(LogTemplateCharacter, Log, TEXT("%s::BeginPlay: No inventory data found in GameInstance TempInventoryToTransfer. Using default/existing inventory."), *GetName());
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemplateCharacter, Warning, TEXT("%s::BeginPlay: InventoryComponent is null. Cannot load inventory."), *GetName());
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("%s::BeginPlay: Could not cast GameInstance to UMyGameInstance. Inventory not loaded."), *GetName());
 	}
 }
