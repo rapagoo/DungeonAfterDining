@@ -53,7 +53,7 @@ void UActionMenuWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 	RemoveFromParent();
 }
 
-void UActionMenuWidget::InitializeMenu(const FSlotStruct& InItem, int32 InSlotIndex, AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, USlotWidget* InOwningSlotWidget)
+void UActionMenuWidget::InitializeMenu(const FSlotStruct& InItem, int32 InSlotIndex, ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, USlotWidget* InOwningSlotWidget)
 {
 	ItemToActOn = InItem;
 	ItemSlotIndex = InSlotIndex;
@@ -69,8 +69,12 @@ void UActionMenuWidget::InitializeMenu(const FSlotStruct& InItem, int32 InSlotIn
 	// Potentially update button visibility/text based on ItemToActOn if needed
 
 	// --- Conditional Button Binding and Text ---
-	bool bIsCooking = (OwnerCharacter != nullptr && OwnerCharacter->IsInCookingMode());
-	UE_LOG(LogTemp, Log, TEXT("ActionMenu: Is Cooking Mode? %d"), bIsCooking);
+	bool bIsCooking = false;
+	if (AWarriorHeroCharacter* WarriorChar = Cast<AWarriorHeroCharacter>(OwnerCharacter))
+	{
+		bIsCooking = WarriorChar->IsInCookingMode();
+	}
+	UE_LOG(LogTemp, Log, TEXT("ActionMenu: Is Cooking Mode for %s? %d"), *OwnerCharacter->GetName(), bIsCooking);
 
 	if (DropButton)
 	{
@@ -148,9 +152,10 @@ void UActionMenuWidget::OnPlaceButtonClicked()
 {
 	UE_LOG(LogTemp, Log, TEXT("\'Place\' button clicked for slot %d"), ItemSlotIndex);
 
-	if (!OwnerCharacter)
+	AWarriorHeroCharacter* WarriorChar = Cast<AWarriorHeroCharacter>(OwnerCharacter);
+	if (!WarriorChar)
 	{
-		UE_LOG(LogTemp, Error, TEXT("OnPlaceButtonClicked: OwnerCharacter is null!"));
+		UE_LOG(LogTemp, Error, TEXT("OnPlaceButtonClicked: OwnerCharacter is not AWarriorHeroCharacter or is null!"));
 		RemoveFromParent();
 		return;
 	}
@@ -162,8 +167,7 @@ void UActionMenuWidget::OnPlaceButtonClicked()
 	}
 
 	// Call the function on the character to handle placing the item
-	// This function needs to be implemented in AWarriorHeroCharacter
-	OwnerCharacter->PlaceItemOnTable(ItemSlotIndex);
+	WarriorChar->PlaceItemOnTable(ItemSlotIndex);
 
 	// Focus logic (can be improved, but keeping original for now)
 	APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);

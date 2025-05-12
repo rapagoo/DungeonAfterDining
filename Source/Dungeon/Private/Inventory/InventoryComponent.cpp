@@ -43,7 +43,6 @@ void UInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Get the owning player controller
 	APlayerController* PlayerController = Cast<APlayerController>(GetOwner()->GetInstigatorController());
 	if (!PlayerController)
 	{
@@ -51,21 +50,26 @@ void UInventoryComponent::BeginPlay()
 		return;
 	}
 
-	// Create Inventory Widget if class is set
 	if (InventoryWidgetClass)
 	{
 		InventoryWidgetInstance = CreateWidget<UUserWidget>(PlayerController, InventoryWidgetClass);
 		if (InventoryWidgetInstance)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Inventory Widget created."));
-			// Don't add to viewport here, ToggleInventory will handle it
 
-			// Set owner references after creation
-			AWarriorHeroCharacter* OwningCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
+			// Try to set owner references using ACharacter for more generality
+			ACharacter* OwningActorAsCharacter = Cast<ACharacter>(GetOwner()); // Cast to ACharacter
 			UInventoryWidget* TypedWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
-			if(TypedWidget && OwningCharacter)
+			if(TypedWidget && OwningActorAsCharacter) // Check if both are valid
 			{
-				TypedWidget->SetOwnerReferences(OwningCharacter, this);
+				// Assuming UInventoryWidget::SetOwnerReferences can take ACharacter*
+				// If it specifically needs AWarriorHeroCharacter*, this part will need adjustment
+				// or the SetOwnerReferences signature in UInventoryWidget needs to be changed.
+				TypedWidget->SetOwnerReferences(OwningActorAsCharacter, this);
+			}
+			else if (TypedWidget && !OwningActorAsCharacter)
+			{
+			    UE_LOG(LogTemp, Warning, TEXT("InventoryComponent::BeginPlay: Owner is not an ACharacter. Cannot set owner references in InventoryWidget."));
 			}
 		}
 		else
@@ -120,66 +124,66 @@ void UInventoryComponent::ToggleInventory()
 	APlayerController* PlayerController = Cast<APlayerController>(GetOwner()->GetInstigatorController());
 	if (!PlayerController) return;
 
-	// Create widget if it doesn't exist
 	if (!InventoryWidgetInstance && InventoryWidgetClass)
 	{
 		InventoryWidgetInstance = CreateWidget<UUserWidget>(PlayerController, InventoryWidgetClass);
-		if (!InventoryWidgetInstance) return; // Failed to create widget
+		if (!InventoryWidgetInstance) return; 
 
-		// Set owner references after creation in ToggleInventory as well
-		AWarriorHeroCharacter* OwningCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
+		// Set owner references - similar to BeginPlay, attempt with ACharacter
+		ACharacter* OwningActorAsCharacter = Cast<ACharacter>(GetOwner());
 		UInventoryWidget* TypedWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
-		if(TypedWidget && OwningCharacter)
+		if(TypedWidget && OwningActorAsCharacter)
 		{
-			TypedWidget->SetOwnerReferences(OwningCharacter, this);
+			TypedWidget->SetOwnerReferences(OwningActorAsCharacter, this);
 		}
+        else if (TypedWidget && !OwningActorAsCharacter)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("InventoryComponent::ToggleInventory: Owner is not an ACharacter. Cannot set owner references in InventoryWidget."));
+        }
 	}
 
-	if (!InventoryWidgetInstance) return; // No widget instance available
+	if (!InventoryWidgetInstance) return; 
 
-	// Toggle visibility and input mode
 	if (InventoryWidgetInstance->IsInViewport())
 	{
-		// --- Start Closing Inventory --- 
 		InventoryWidgetInstance->RemoveFromParent();
 
-		// Check if the owner is in cooking mode
-		AWarriorHeroCharacter* OwnerCharacter = Cast<AWarriorHeroCharacter>(GetOwner());
-		bool bStillInCookingMode = OwnerCharacter ? OwnerCharacter->IsInCookingMode() : false;
-
-		if (bStillInCookingMode)
+		bool bRestoreGameOnlyInput = true;
+		if (AWarriorHeroCharacter* WarriorChar = Cast<AWarriorHeroCharacter>(GetOwner()))
 		{
-			// Keep UI input mode and cursor if still cooking
-			UE_LOG(LogTemp, Log, TEXT("Inventory Closed, but staying in Cooking Mode input."));
-			FInputModeGameAndUI InputModeData; // Use GameAndUI to allow background game interaction if needed
-			InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-			InputModeData.SetHideCursorDuringCapture(false);
-			PlayerController->SetInputMode(InputModeData);
-			PlayerController->SetShowMouseCursor(true);
+			if (WarriorChar->IsInCookingMode())
+			{
+				UE_LOG(LogTemp, Log, TEXT("Inventory Closed, but WarriorHeroCharacter is in Cooking Mode. Setting GameAndUI input."));
+				FInputModeGameAndUI InputModeData;
+				InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+				InputModeData.SetHideCursorDuringCapture(false);
+				PlayerController->SetInputMode(InputModeData);
+				PlayerController->SetShowMouseCursor(true);
+				bRestoreGameOnlyInput = false; // GameOnly input mode should not be set
+			}
 		}
-		else
+
+		if (bRestoreGameOnlyInput)
 		{
-			// Restore game-only input mode if not cooking
-			UE_LOG(LogTemp, Log, TEXT("Inventory Closed, returning to GameOnly input."));
+			UE_LOG(LogTemp, Log, TEXT("Inventory Closed, returning to GameOnly input for %s."), *GetOwner()->GetName());
 			PlayerController->SetInputMode(FInputModeGameOnly());
 			PlayerController->SetShowMouseCursor(false);
 		}
 	}
 	else
 	{
-		// --- Start Opening Inventory --- 
-		UE_LOG(LogTemp, Log, TEXT("Attempting to open inventory..."));
+		// ... (인벤토리 열기 로직은 거의 동일하게 유지) ...
+		UE_LOG(LogTemp, Log, TEXT("Attempting to open inventory for %s..."), *GetOwner()->GetName());
 
 		if (!InventoryWidgetInstance)
 		{
-			UE_LOG(LogTemp, Error, TEXT("InventoryWidgetInstance is NULL before AddToViewport!"));
-			return; // Cannot proceed
+			UE_LOG(LogTemp, Error, TEXT("InventoryWidgetInstance is NULL before AddToViewport for %s!"), *GetOwner()->GetName());
+			return; 
 		}
 
 		InventoryWidgetInstance->AddToViewport();
-		UE_LOG(LogTemp, Log, TEXT("Called AddToViewport. IsInViewport: %s"), InventoryWidgetInstance->IsInViewport() ? TEXT("True") : TEXT("False"));
+		UE_LOG(LogTemp, Log, TEXT("Called AddToViewport for %s. IsInViewport: %s"), *GetOwner()->GetName(), InventoryWidgetInstance->IsInViewport() ? TEXT("True") : TEXT("False"));
 
-		// Explicitly hide the ItemInfoWidget when opening the inventory
 		UInventoryWidget* InventoryWidget = Cast<UInventoryWidget>(InventoryWidgetInstance);
 		if (InventoryWidget)
 		{
@@ -187,7 +191,7 @@ void UInventoryComponent::ToggleInventory()
 			if (ItemInfo)
 			{
 				ItemInfo->SetVisibility(ESlateVisibility::Hidden);
-				UE_LOG(LogTemp, Log, TEXT("InventoryComponent: Explicitly hid ItemInfoWidget on inventory open."));
+				UE_LOG(LogTemp, Log, TEXT("InventoryComponent: Explicitly hid ItemInfoWidget on inventory open for %s."), *GetOwner()->GetName());
 			}
 		}
 
@@ -196,21 +200,20 @@ void UInventoryComponent::ToggleInventory()
 		if (WidgetToFocus.IsValid())
 		{
 			InputModeData.SetWidgetToFocus(WidgetToFocus);
-			UE_LOG(LogTemp, Log, TEXT("SetWidgetToFocus successful."));
+			UE_LOG(LogTemp, Log, TEXT("SetWidgetToFocus successful for %s."), *GetOwner()->GetName());
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("InventoryWidgetInstance->TakeWidget() returned invalid widget!"));
+			UE_LOG(LogTemp, Warning, TEXT("InventoryWidgetInstance->TakeWidget() returned invalid widget for %s!"), *GetOwner()->GetName());
 		}
-		InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); // Match BP
+		InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock); 
 
 		PlayerController->SetInputMode(InputModeData);
-		UE_LOG(LogTemp, Log, TEXT("SetInputMode(UIOnly) called."));
+		UE_LOG(LogTemp, Log, TEXT("SetInputMode(UIOnly) called for %s."), *GetOwner()->GetName());
 
-		PlayerController->SetShowMouseCursor(true); // Match BP
-		UE_LOG(LogTemp, Log, TEXT("Inventory Opened successfully."));
+		PlayerController->SetShowMouseCursor(true); 
+		UE_LOG(LogTemp, Log, TEXT("Inventory Opened successfully for %s."), *GetOwner()->GetName());
 		
-		// Potentially update UI when opened
 		UpdateInventoryUI(); 
 	}
 }

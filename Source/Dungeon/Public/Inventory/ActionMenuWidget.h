@@ -10,7 +10,7 @@
 // Forward Declarations
 class UButton;
 class UImage;
-class AWarriorHeroCharacter;
+class ACharacter;
 class UInventoryComponent;
 class USlotWidget; // Forward declare SlotWidget
 class AInventoryItemActor; // Forward declare InventoryItemActor
@@ -61,7 +61,7 @@ protected:
 
 	// Reference to the owning character
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Action Menu Data")
-	AWarriorHeroCharacter* OwnerCharacter;
+	ACharacter* OwnerCharacter;
 
 	// Reference to the owning character's inventory component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Action Menu Data")
@@ -117,6 +117,6 @@ protected:
 public:
 	// Call this after creating the widget to set its context
 	UFUNCTION(BlueprintCallable, Category = "Action Menu")
-	void InitializeMenu(const FSlotStruct& InItem, int32 InSlotIndex, AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, USlotWidget* InOwningSlotWidget);
+	void InitializeMenu(const FSlotStruct& InItem, int32 InSlotIndex, ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, USlotWidget* InOwningSlotWidget);
 
 }; 

@@ -34,7 +34,7 @@ void USlotWidget::NativeConstruct()
 	}
 }
 
-void USlotWidget::InitializeSlot(const FSlotStruct& InItemData, int32 InSlotIndex, AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, UItemInfoWidget* InItemInfoWidget)
+void USlotWidget::InitializeSlot(const FSlotStruct& InItemData, int32 InSlotIndex, ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, UItemInfoWidget* InItemInfoWidget)
 {
 	ItemData = InItemData;
 	SlotIndex = InSlotIndex;
@@ -201,15 +201,20 @@ void USlotWidget::UseItemInSlot()
 	UE_LOG(LogTemp, Log, TEXT("UseItemInSlot called for index %d, item %s"), SlotIndex, *ItemData.ItemID.RowName.ToString());
 
 	// --- Input Validation ---
-	if (!OwnerCharacter || !OwnerInventory || SlotIndex < 0 || ItemData.ItemID.RowName.IsNone() || ItemData.Quantity <= 0)
+	// Cast OwnerCharacter to AWarriorHeroCharacter to access Warrior-specific functionalities like ASC
+	AWarriorHeroCharacter* WarriorOwner = Cast<AWarriorHeroCharacter>(OwnerCharacter);
+
+	if (!WarriorOwner || !OwnerInventory || SlotIndex < 0 || ItemData.ItemID.RowName.IsNone() || ItemData.Quantity <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UseItemInSlot: Invalid context or item data."));
+		UE_LOG(LogTemp, Warning, TEXT("UseItemInSlot: Invalid context (Owner is not AWarriorHeroCharacter or other validation failed) or item data."));
 		return;
 	}
-	UAbilitySystemComponent* ASC = OwnerCharacter->GetAbilitySystemComponent(); // Assuming GetAbilitySystemComponent exists on Character
+
+	// Now use WarriorOwner to get ASC
+	UAbilitySystemComponent* ASC = WarriorOwner->GetAbilitySystemComponent(); 
 	if (!ASC)
 	{
-		UE_LOG(LogTemp, Error, TEXT("UseItemInSlot: Could not get Ability System Component from OwnerCharacter."));
+		UE_LOG(LogTemp, Error, TEXT("UseItemInSlot: Could not get Ability System Component from WarriorOwner."));
 		return;
 	}
 	UDataTable* LoadedDT = ItemDataTable.LoadSynchronous();

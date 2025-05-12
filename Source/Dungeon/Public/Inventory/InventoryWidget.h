@@ -16,7 +16,7 @@ class UWidgetSwitcher;
 class UWrapBox;
 class UItemInfoWidget;
 class USlotWidget;
-class AWarriorHeroCharacter; // Forward declare character
+class ACharacter; // Forward declare ACharacter
 class UInventoryComponent; // Forward declare inventory component
 
 /**
@@ -75,7 +75,7 @@ protected:
 
 	// --- References --- 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-	AWarriorHeroCharacter* OwnerCharacter = nullptr;
+	ACharacter* OwnerCharacter = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 	UInventoryComponent* OwnerInventory = nullptr;
@@ -93,7 +93,7 @@ public:
 
 	// Function to set owner references (Call this after creating the widget)
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
-	void SetOwnerReferences(AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory);
+	void SetOwnerReferences(ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory);
 
 	// Function called by InventoryComponent to update the UI
 	UFUNCTION(BlueprintCallable, Category = "Inventory")

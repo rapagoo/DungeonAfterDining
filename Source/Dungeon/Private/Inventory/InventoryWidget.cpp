@@ -35,7 +35,7 @@ UInventoryWidget::UInventoryWidget(const FObjectInitializer& ObjectInitializer)
 	SetIsFocusable(true); // Use the setter function instead
 }
 
-void UInventoryWidget::SetOwnerReferences(AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory)
+void UInventoryWidget::SetOwnerReferences(ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory)
 {
 	OwnerCharacter = InOwnerCharacter;
 	OwnerInventory = InOwnerInventory;

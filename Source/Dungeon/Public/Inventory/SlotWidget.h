@@ -13,7 +13,7 @@ class UImage;
 class UTextBlock;
 class UButton;
 class UDataTable;
-class AWarriorHeroCharacter;
+class ACharacter;
 class UInventoryComponent;
 class UActionMenuWidget;
 class UGameplayEffect;
@@ -56,7 +56,7 @@ protected:
 	// --- References & Config --- 
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slot Data")
-	AWarriorHeroCharacter* OwnerCharacter;
+	ACharacter* OwnerCharacter;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slot Data")
 	UInventoryComponent* OwnerInventory;
@@ -101,7 +101,7 @@ protected:
 public:
 	// Call this to set the data for this slot widget
 	UFUNCTION(BlueprintCallable, Category = "Slot Functions")
-	void InitializeSlot(const FSlotStruct& InItemData, int32 InSlotIndex, AWarriorHeroCharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, UItemInfoWidget* InItemInfoWidget);
+	void InitializeSlot(const FSlotStruct& InItemData, int32 InSlotIndex, ACharacter* InOwnerCharacter, UInventoryComponent* InOwnerInventory, UItemInfoWidget* InItemInfoWidget);
 
 	// Handles the logic for using the item in this slot
 	UFUNCTION(BlueprintCallable, Category = "Slot Functions") // Allow BP override/call if needed
