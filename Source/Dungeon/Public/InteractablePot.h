@@ -16,6 +16,7 @@
 #include "NiagaraComponent.h" // Include for Niagara Component
 #include "NiagaraSystem.h"    // Include for Niagara System asset
 #include "Components/AudioComponent.h"
+#include "Cooking/CookingMethodBase.h" // Added for cooking methods
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
@@ -177,6 +178,12 @@ protected:
 	// NEW: Time when burning started (used for material interpolation)
 	float BurningStartTime = 0.0f;
 
+	// --- Cooking Method ---
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Setup", meta = (DisplayName = "Default Cooking Method"))
+	TSubclassOf<UCookingMethodBase> DefaultCookingMethodClass;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Cooking|State", meta = (ToolTip = "The active cooking method instance."))
+	TObjectPtr<UCookingMethodBase> CurrentCookingMethod;
 
 	// --- Ingredient Spawning Parameters ---
 	// Scale to apply to spawned ingredient meshes relative to the pot
@@ -207,7 +214,6 @@ protected:
 	// NEW: Initial value for the material parameter
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Material")
 	float InitialMaterialParamValue = 0.0f;
-
 
 	// --- Sound Effects ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Sound")
@@ -249,12 +255,14 @@ protected:
 	UFUNCTION()
 	void OnBurningComplete();
 
-	// Checks if the current ingredients match a recipe
-	// Returns the FName ID of the resulting item, or NAME_None if no valid recipe.
-	FName CheckRecipeInternal();
+	// DEPRECATED: Old recipe checking logic. Functionality moved to CookingMethod classes.
+	// FName CheckRecipeInternal(); 
 
 	// RENAMED & MODIFIED: Clears visual meshes, MIDs, ingredient data, stops timers, and resets state.
 	// Parameter controls whether to notify the widget (useful to avoid redundant calls)
 	void ClearIngredientsAndData(bool bNotifyWidget = true);
+
+	// Initializes the CurrentCookingMethod based on DefaultCookingMethodClass
+	void InitializeCookingMethod();
 
 }; 

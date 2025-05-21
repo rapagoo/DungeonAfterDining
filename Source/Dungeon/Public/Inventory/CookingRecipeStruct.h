@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "CookingRecipeStruct.generated.h"
 
 /**
@@ -21,12 +22,24 @@ public:
 
     /** The resulting Item ID (RowName from ItemDataTable) */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Recipe")
-    FName ResultItem;
+    FName ResultingItemID;
 
-    // Add other recipe properties here if needed (e.g., CookingTime)
+    /** Time in seconds this recipe takes to cook. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe")
+    float CookingDuration;
+
+    // NEW: Gameplay Tags to specify which cooking methods can use this recipe.
+    // Example Tags: "Cooking.Method.Grill", "Cooking.Method.Fry", "Cooking.Method.Boil"
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe", meta = (DisplayName = "Allowed Cooking Methods"))
+    FGameplayTagContainer AllowedCookingMethods;
+
+    // Optional: A specific cooking method this recipe is primarily designed for (if only one)
+    // UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe", meta = (DisplayName = "Primary Cooking Method"))
+    // FGameplayTag PrimaryCookingMethod;
 
     FCookingRecipeStruct()
     {
-        // Default constructor if needed
+        // Default constructor
+        CookingDuration = 5.0f; // Default cooking duration
     }
 }; 
