@@ -9,6 +9,7 @@
 #include "Engine/DataTable.h" // Already included, but good practice
 #include "Inventory/CookingRecipeStruct.h" // Make sure this is included
 #include "Inventory/InvenItemStruct.h" // Include the definition for FInvenItemStruct
+#include "Inventory/InvenItemEnum.h" // Include for EInventoryItemType
 #include "Characters/WarriorHeroCharacter.h" // Include player character header
 #include "Inventory/InventoryComponent.h"   // Include inventory component header
 #include "Inventory/InventoryItemActor.h"
@@ -25,6 +26,8 @@
 #include "Materials/MaterialInstanceDynamic.h" // Include for MID
 #include "Components/AudioComponent.h" // Make sure this is included, though already in .h it's good practice for .cpp if directly used for creation
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
+#include "CookingCameraShake.h" // Include for cooking camera shake
+#include "GameFramework/PlayerController.h" // Include for player controller access
 
 // Sets default values
 AInteractablePot::AInteractablePot()
@@ -275,6 +278,18 @@ bool AInteractablePot::AddIngredient(FName IngredientID)
 			}
 			// ---------------------------------
 
+			// --- Trigger Camera Shake for Ingredient Addition ---
+			if (IngredientAdditionCameraShakeClass)
+			{
+				APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+				if (PlayerController)
+				{
+					PlayerController->ClientStartCameraShake(IngredientAdditionCameraShakeClass);
+					UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Triggered ingredient addition camera shake"));
+				}
+			}
+			// ---------------------------------------------------
+
 			// Spawn the ingredient mesh
 			UStaticMeshComponent* NewIngredientMeshComp = NewObject<UStaticMeshComponent>(this); // Create component owned by this actor
 			if (NewIngredientMeshComp)
@@ -375,6 +390,20 @@ void AInteractablePot::StartCooking()
 
 	if (bCanCook && ResultItemID != NAME_None)
 	{
+		// NEW: Check if player actually owns the recipe for this result item
+		bool bPlayerOwnsRecipe = CheckPlayerOwnsRecipe(ResultItemID);
+		if (!bPlayerOwnsRecipe)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Player does not own the recipe for %s. Cannot cook."), *ResultItemID.ToString());
+			if (CookingFailSound)
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+			}
+			// Don't clear ingredients - let player try again or get the recipe
+			NotifyWidgetUpdate();
+			return;
+		}
+
 		CurrentCookedResultID = ResultItemID;
 		CookingDuration = DeterminedCookingDuration; // Update pot's cooking duration with the one from the method
 
@@ -391,6 +420,19 @@ void AInteractablePot::StartCooking()
 		{
 			UGameplayStatics::PlaySoundAtLocation(this, StartCookingSound, GetActorLocation());
 		}
+
+		// --- Trigger Camera Shake for Cooking Start ---
+		if (CookingStartCameraShakeClass)
+		{
+			APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+			if (PlayerController)
+			{
+				PlayerController->ClientStartCameraShake(CookingStartCameraShakeClass);
+				UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Triggered cooking start camera shake"));
+			}
+		}
+		// -----------------------------------------------
+
 		if (CookingSteamParticles)
 		{
 			CookingSteamParticles->Activate();
@@ -705,6 +747,89 @@ void AInteractablePot::ClearIngredientsAndData(bool bNotifyWidget /*= true*/)
 	{
 		NotifyWidgetUpdate(); 
 	}
+}
+
+// NEW: Checks if the player owns the recipe for the given result item ID
+bool AInteractablePot::CheckPlayerOwnsRecipe(FName ResultItemID)
+{
+	if (ResultItemID == NAME_None || !ItemDataTable)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Invalid ResultItemID or ItemDataTable."));
+		return false;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Looking for recipe that unlocks result item: %s"), *ResultItemID.ToString());
+
+	// Get the player character and inventory
+	APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	if (!PlayerController)
+	{
+		UE_LOG(LogTemp, Error, TEXT("CheckPlayerOwnsRecipe: Could not get PlayerController."));
+		return false;
+	}
+
+	AWarriorHeroCharacter* PlayerChar = Cast<AWarriorHeroCharacter>(PlayerController->GetPawn());
+	if (!PlayerChar)
+	{
+		UE_LOG(LogTemp, Error, TEXT("CheckPlayerOwnsRecipe: Could not cast Player Pawn to AWarriorHeroCharacter."));
+		return false;
+	}
+
+	UInventoryComponent* PlayerInventory = PlayerChar->GetInventoryComponent();
+	if (!PlayerInventory)
+	{
+		UE_LOG(LogTemp, Error, TEXT("CheckPlayerOwnsRecipe: Could not get InventoryComponent from PlayerCharacter."));
+		return false;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Checking inventory slots. Total slots: %d"), PlayerInventory->InventorySlots.Num());
+
+	// Search through all inventory slots for recipe items
+	for (int32 SlotIndex = 0; SlotIndex < PlayerInventory->InventorySlots.Num(); SlotIndex++)
+	{
+		const FSlotStruct& Slot = PlayerInventory->InventorySlots[SlotIndex];
+		
+		// Skip empty slots
+		if (Slot.ItemID.RowName.IsNone() || Slot.Quantity <= 0)
+		{
+			continue;
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Slot %d contains: %s (Qty: %d, Type: %s)"), 
+			SlotIndex, 
+			*Slot.ItemID.RowName.ToString(), 
+			Slot.Quantity,
+			*UEnum::GetValueAsString(Slot.ItemType));
+
+		// Check if this slot contains a recipe item
+		if (Slot.ItemType == EInventoryItemType::EIT_Recipe)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Found recipe item: %s, checking its UnlocksRecipeID..."), *Slot.ItemID.RowName.ToString());
+			
+			// Get the recipe item data from the data table
+			const FString ContextString(TEXT("Checking Recipe Item UnlocksRecipeID"));
+			FInventoryItemStruct* RecipeItemData = ItemDataTable->FindRow<FInventoryItemStruct>(Slot.ItemID.RowName, ContextString, true);
+			
+			if (RecipeItemData)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Recipe item %s unlocks: %s"), *Slot.ItemID.RowName.ToString(), *RecipeItemData->UnlocksRecipeID.ToString());
+				
+				// Check if this recipe unlocks the desired result item
+				if (RecipeItemData->UnlocksRecipeID == ResultItemID)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: FOUND! Recipe item %s unlocks %s"), *Slot.ItemID.RowName.ToString(), *ResultItemID.ToString());
+					return true;
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Could not find ItemData for recipe item %s in ItemDataTable"), *Slot.ItemID.RowName.ToString());
+			}
+		}
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("CheckPlayerOwnsRecipe: Player does NOT own a recipe that unlocks %s"), *ResultItemID.ToString());
+	return false;
 }
 
 // Remove or comment out the old ClearIngredientsVisually definition if it exists

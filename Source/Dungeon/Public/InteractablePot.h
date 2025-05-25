@@ -17,6 +17,7 @@
 #include "NiagaraSystem.h"    // Include for Niagara System asset
 #include "Components/AudioComponent.h"
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
+#include "Camera/CameraShakeBase.h" // Include for camera shake
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
@@ -27,6 +28,9 @@ class USoundBase;
 
 // Forward declaration for MaterialInstanceDynamic
 class UMaterialInstanceDynamic;
+
+// Forward declaration for CookingCameraShake
+class UCookingCameraShake;
 
 UCLASS()
 class DUNGEON_API AInteractablePot : public AInteractableTable // Inherit from AInteractableTable or AActor
@@ -242,6 +246,15 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components") 
 	TObjectPtr<UAudioComponent> FireAudioComponent;
 
+	// --- Camera Shake Effects ---
+	// Camera shake class for ingredient addition
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|CameraShake")
+	TSubclassOf<UCameraShakeBase> IngredientAdditionCameraShakeClass;
+
+	// Camera shake class for cooking start
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|CameraShake")
+	TSubclassOf<UCameraShakeBase> CookingStartCameraShakeClass;
+
 	// --- Protected Functions ---
 	// Function called when an ingredient actor overlaps the detection volume (DEPRECATED for adding items)
 	UFUNCTION()
@@ -264,5 +277,8 @@ protected:
 
 	// Initializes the CurrentCookingMethod based on DefaultCookingMethodClass
 	void InitializeCookingMethod();
+
+	// NEW: Checks if the player owns the recipe for the given result item ID
+	bool CheckPlayerOwnsRecipe(FName ResultItemID);
 
 }; 

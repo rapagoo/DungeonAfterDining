@@ -23,7 +23,9 @@ public class Dungeon : ModuleRules
             "NavigationSystem",
             "UMG",
             "Slate",
-            "SlateCore", "ProceduralMeshComponent", "ProceduralMeshComponent",
+            "SlateCore", 
+            "ProceduralMeshComponent", 
+            "EngineCameras",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ProceduralMeshComponent" });
