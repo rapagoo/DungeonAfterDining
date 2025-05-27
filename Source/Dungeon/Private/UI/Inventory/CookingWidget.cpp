@@ -341,6 +341,25 @@ void UCookingWidget::UpdateWidgetState(const TArray<FName>& IngredientIDs, bool 
         CollectButton->SetIsEnabled(bCanCollect);
         CollectButton->SetVisibility(bCanCollect ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     }
+
+    // Handle AddIngredient button visibility - only show for InteractableTable, not for InteractablePot
+    if (AddIngredientButton)
+    {
+        AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+        if (Pot)
+        {
+            // For InteractablePot, hide the AddIngredient button as it's not used
+            AddIngredientButton->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        else
+        {
+            // For InteractableTable, show the AddIngredient button and update its state
+            AddIngredientButton->SetVisibility(ESlateVisibility::Visible);
+            // Enable/disable based on whether there's a nearby sliced ingredient
+            bool bHasNearbyIngredient = NearbyIngredient.IsValid();
+            AddIngredientButton->SetIsEnabled(bHasNearbyIngredient);
+        }
+    }
 }
 
 void UCookingWidget::SetAssociatedTable(AInteractableTable* Table)
