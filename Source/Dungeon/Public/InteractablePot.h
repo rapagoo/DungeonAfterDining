@@ -85,6 +85,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cooking|Data") // Blueprint에서도 필요하면 호출 가능하도록 설정
 	UDataTable* GetItemDataTable() const { return ItemDataTable.Get(); }
 
+	// NEW: Checks if the player owns the recipe for the given result item ID
+	bool CheckPlayerOwnsRecipe(FName ResultItemID);
+
+	// --- Timing Minigame Functions ---
+	// NEW: Handle successful timing event
+	UFUNCTION(BlueprintCallable, Category = "Cooking|Minigame")
+	void OnTimingEventSuccess();
+
+	// NEW: Handle failed timing event
+	UFUNCTION(BlueprintCallable, Category = "Cooking|Minigame")
+	void OnTimingEventFailure();
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -255,6 +267,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|CameraShake")
 	TSubclassOf<UCameraShakeBase> CookingStartCameraShakeClass;
 
+	// NEW: Camera shake class for timing event success
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|CameraShake")
+	TSubclassOf<UCameraShakeBase> TimingEventSuccessCameraShakeClass;
+
 	// --- Protected Functions ---
 	// Function called when an ingredient actor overlaps the detection volume (DEPRECATED for adding items)
 	UFUNCTION()
@@ -278,7 +294,36 @@ protected:
 	// Initializes the CurrentCookingMethod based on DefaultCookingMethodClass
 	void InitializeCookingMethod();
 
-	// NEW: Checks if the player owns the recipe for the given result item ID
-	bool CheckPlayerOwnsRecipe(FName ResultItemID);
+	// NEW: Trigger a timing event during cooking (Internal function)
+	void TriggerTimingEvent();
+
+private:
+	// --- Timing Minigame Variables ---
+	// NEW: Timer for when to trigger timing events during cooking
+	FTimerHandle TimingEventTriggerTimer;
+
+	// NEW: Number of successful timing events this cooking session
+	UPROPERTY()
+	int32 SuccessfulTimingEvents = 0;
+
+	// NEW: Number of failed timing events this cooking session
+	UPROPERTY()
+	int32 FailedTimingEvents = 0;
+
+	// NEW: How often timing events should trigger during cooking (in seconds)
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Minigame", meta = (ClampMin = "1.0", ClampMax = "10.0"))
+	float TimingEventInterval = 3.0f;
+
+	// NEW: How many timing events should happen during one cooking session
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Minigame", meta = (ClampMin = "1", ClampMax = "5"))
+	int32 MaxTimingEvents = 2;
+
+	// NEW: Time penalty for each failed timing event (in seconds)
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Minigame", meta = (ClampMin = "0.0", ClampMax = "5.0"))
+	float TimingEventFailurePenalty = 1.0f;
+
+	// NEW: Burning time reduction for each failed timing event (in seconds)
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Minigame", meta = (ClampMin = "0.0", ClampMax = "3.0"))
+	float BurningTimeReduction = 0.5f;
 
 }; 

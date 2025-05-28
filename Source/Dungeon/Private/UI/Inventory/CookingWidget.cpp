@@ -39,6 +39,12 @@ void UCookingWidget::NativeConstruct()
 		CollectButton->SetIsEnabled(false);
 		CollectButton->SetVisibility(ESlateVisibility::Collapsed);
 	}
+	if (StirButton)
+	{
+		StirButton->OnClicked.AddDynamic(this, &UCookingWidget::OnStirButtonClicked);
+		StirButton->SetIsEnabled(false);
+		StirButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
 
 	if (StatusText)
 	{
@@ -489,4 +495,131 @@ AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
 	}
 	return nullptr;
 }
-*/ 
+*/
+
+// NEW: Timing minigame functions
+void UCookingWidget::OnStirButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Stir Button Clicked!"));
+	
+	if (!bIsTimingEventActive)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Stir button clicked but no timing event is active."));
+		return;
+	}
+
+	// Calculate if the click was within the allowed time window
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	float TimeElapsed = CurrentTime - TimingEventStartTime;
+	
+	if (TimeElapsed <= TimingEventDuration)
+	{
+		// Success!
+		UE_LOG(LogTemp, Log, TEXT("Timing event SUCCESS! Responded in %.2f seconds"), TimeElapsed);
+		
+		// Hide the stir button
+		if (StirButton)
+		{
+			StirButton->SetVisibility(ESlateVisibility::Collapsed);
+			StirButton->SetIsEnabled(false);
+		}
+		
+		// Update status text
+		if (StatusText)
+		{
+			StatusText->SetText(FText::FromString(TEXT("성공! 요리를 획득하세요.")));
+		}
+		
+		// Notify the pot about successful timing event
+		AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+		if (Pot)
+		{
+			Pot->OnTimingEventSuccess();
+			UE_LOG(LogTemp, Log, TEXT("Notifying pot about successful timing event"));
+		}
+		
+		// Reset timing event state
+		bIsTimingEventActive = false;
+		TimingEventStartTime = 0.0f;
+	}
+	else
+	{
+		// Too late - this shouldn't happen if we properly hide the button on timeout
+		UE_LOG(LogTemp, Warning, TEXT("Stir button clicked too late! Time elapsed: %.2f"), TimeElapsed);
+		CheckTimingEventTimeout(); // Force timeout handling
+	}
+}
+
+void UCookingWidget::StartTimingEvent()
+{
+	UE_LOG(LogTemp, Log, TEXT("Starting timing event!"));
+	
+	if (bIsTimingEventActive)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Timing event already active, ignoring new start request"));
+		return;
+	}
+	
+	// Set timing event state
+	bIsTimingEventActive = true;
+	TimingEventStartTime = GetWorld()->GetTimeSeconds();
+	
+	// Show and enable the stir button
+	if (StirButton)
+	{
+		StirButton->SetVisibility(ESlateVisibility::Visible);
+		StirButton->SetIsEnabled(true);
+	}
+	
+	// Update status text
+	if (StatusText)
+	{
+		StatusText->SetText(FText::FromString(TEXT("지금 저어주세요!")));
+	}
+	
+	// Set up a timer to check for timeout
+	FTimerHandle TimingEventTimer;
+	GetWorld()->GetTimerManager().SetTimer(TimingEventTimer, this, &UCookingWidget::CheckTimingEventTimeout, TimingEventDuration, false);
+}
+
+void UCookingWidget::CheckTimingEventTimeout()
+{
+	if (!bIsTimingEventActive)
+	{
+		return; // Event already handled
+	}
+	
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	float TimeElapsed = CurrentTime - TimingEventStartTime;
+	
+	if (TimeElapsed >= TimingEventDuration)
+	{
+		// Timeout - player failed to respond in time
+		UE_LOG(LogTemp, Log, TEXT("Timing event FAILED! Player didn't respond in time (%.2f seconds)"), TimeElapsed);
+		
+		// Hide the stir button
+		if (StirButton)
+		{
+			StirButton->SetVisibility(ESlateVisibility::Collapsed);
+			StirButton->SetIsEnabled(false);
+		}
+		
+		// Update status text
+		if (StatusText)
+		{
+			StatusText->SetText(FText::FromString(TEXT("놓쳤어요... 요리 중...")));
+		}
+		
+		// Notify the pot about failed timing event
+		AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+		if (Pot)
+		{
+			Pot->OnTimingEventFailure();
+			UE_LOG(LogTemp, Log, TEXT("Notifying pot about failed timing event"));
+		}
+		
+		// Reset timing event state
+		bIsTimingEventActive = false;
+		TimingEventStartTime = 0.0f;
+	}
+} 

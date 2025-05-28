@@ -41,6 +41,13 @@ public:
 	/** NEW: Called by InteractablePot to update the entire widget's state */
 	void UpdateWidgetState(const TArray<FName>& IngredientIDs, bool bIsPotCooking, bool bIsPotCookingComplete, bool bIsPotBurnt, FName CookedResultID);
 
+	/** NEW: Start a timing event for the minigame */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void StartTimingEvent();
+
+	/** NEW: Check if timing event has expired */
+	void CheckTimingEventTimeout();
+
 protected:
 	virtual void NativeConstruct() override;
 
@@ -55,6 +62,10 @@ protected:
 	/** NEW: Button to collect the cooked item */
 	UPROPERTY(meta = (BindWidget))
 	UButton* CollectButton;
+
+	/** NEW: Button for timing minigame during cooking */
+	UPROPERTY(meta = (BindWidget))
+	UButton* StirButton;
 
 	/** Vertical box to list the added ingredients */
 	UPROPERTY(meta = (BindWidget))
@@ -76,6 +87,16 @@ protected:
 	UPROPERTY()
 	TWeakObjectPtr<AInventoryItemActor> NearbyIngredient;
 
+	/** NEW: Timing minigame state variables */
+	UPROPERTY()
+	bool bIsTimingEventActive = false;
+
+	UPROPERTY()
+	float TimingEventStartTime = 0.0f;
+
+	UPROPERTY()
+	float TimingEventDuration = 2.0f; // How long player has to respond
+
 	/** Called when the Add Ingredient button is clicked (Now adds nearby item to inventory) */
 	UFUNCTION()
 	void OnAddIngredientClicked();
@@ -87,6 +108,10 @@ protected:
 	/** NEW: Called when the Collect button is clicked */
 	UFUNCTION()
 	void OnCollectButtonClicked();
+
+	/** NEW: Called when the Stir button is clicked during cooking */
+	UFUNCTION()
+	void OnStirButtonClicked();
 
 	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
 	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);

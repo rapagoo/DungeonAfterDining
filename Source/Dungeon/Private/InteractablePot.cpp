@@ -450,6 +450,15 @@ void AInteractablePot::StartCooking()
 
 		// Initialize MIDs for cooking visuals if not already done (should be done on add ingredient)
 		// For now, we assume MIDs are ready from AddIngredient. The Tick function will handle interpolation.
+
+		// NEW: Start timing minigame events
+		SuccessfulTimingEvents = 0;
+		FailedTimingEvents = 0;
+		if (TimingEventInterval > 0.0f && MaxTimingEvents > 0)
+		{
+			GetWorldTimerManager().SetTimer(TimingEventTriggerTimer, this, &AInteractablePot::TriggerTimingEvent, TimingEventInterval, false);
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Started timing event system. First event in %.2f seconds"), TimingEventInterval);
+		}
 	}
 	else
 	{
@@ -476,7 +485,8 @@ void AInteractablePot::OnCookingComplete()
 	bIsCooking = false;
 	bIsCookingComplete = true;
 	bIsBurnt = false; 
-	GetWorldTimerManager().ClearTimer(CookingTimerHandle); 
+	GetWorldTimerManager().ClearTimer(CookingTimerHandle);
+	GetWorldTimerManager().ClearTimer(TimingEventTriggerTimer); // Clear timing event timer
 	// --- End Update State ---
 
     // --- Finalize Cooked Material Appearance ---
@@ -508,8 +518,19 @@ void AInteractablePot::OnCookingComplete()
 	if (CurrentCookedResultID != NAME_None && BurningDuration > 0.0f)
 	{
 		BurningStartTime = GetWorld()->GetTimeSeconds();
-		GetWorldTimerManager().SetTimer(BurningTimerHandle, this, &AInteractablePot::OnBurningComplete, BurningDuration, false);
-		UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Starting burning timer (%.2f seconds)."), BurningDuration);
+		
+		// NEW: Reduce burning time based on failed timing events
+		float ActualBurningDuration = BurningDuration;
+		if (FailedTimingEvents > 0 && BurningTimeReduction > 0.0f)
+		{
+			float TotalReduction = FailedTimingEvents * BurningTimeReduction;
+			ActualBurningDuration = FMath::Max(1.0f, BurningDuration - TotalReduction); // Minimum 1 second
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Burning time reduced by %.2f seconds due to %d failed timing events (%.2f -> %.2f seconds)"), 
+				TotalReduction, FailedTimingEvents, BurningDuration, ActualBurningDuration);
+		}
+		
+		GetWorldTimerManager().SetTimer(BurningTimerHandle, this, &AInteractablePot::OnBurningComplete, ActualBurningDuration, false);
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Starting burning timer (%.2f seconds)."), ActualBurningDuration);
 	} 
 	else if (CurrentCookedResultID == NAME_None) 
 	{
@@ -716,6 +737,7 @@ void AInteractablePot::ClearIngredientsAndData(bool bNotifyWidget /*= true*/)
 
 	GetWorldTimerManager().ClearTimer(CookingTimerHandle);
 	GetWorldTimerManager().ClearTimer(BurningTimerHandle);
+	GetWorldTimerManager().ClearTimer(TimingEventTriggerTimer); // Clear timing event timer
 
 	// --- Deactivate Cooking Effects on Clear --- // 추가된 로직
 	if (CookingSteamParticles && CookingSteamParticles->IsActive())
@@ -834,3 +856,93 @@ bool AInteractablePot::CheckPlayerOwnsRecipe(FName ResultItemID)
 
 // Remove or comment out the old ClearIngredientsVisually definition if it exists
 // void AInteractablePot::ClearIngredientsVisually() { ... } 
+
+// NEW: Timing minigame event functions
+void AInteractablePot::TriggerTimingEvent()
+{
+	// Check if cooking is still active and we haven't exceeded max events
+	if (!bIsCooking || SuccessfulTimingEvents + FailedTimingEvents >= MaxTimingEvents)
+	{
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Timing event trigger cancelled (Not cooking or max events reached)"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Triggering timing event! (%d/%d events)"), 
+		SuccessfulTimingEvents + FailedTimingEvents + 1, MaxTimingEvents);
+
+	// Tell the widget to start a timing event
+	if (CookingWidgetRef)
+	{
+		CookingWidgetRef->StartTimingEvent();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: No widget available for timing event"));
+		// Auto-fail the event if no widget
+		OnTimingEventFailure();
+	}
+
+	// Schedule the next timing event if we haven't reached the max
+	if (SuccessfulTimingEvents + FailedTimingEvents + 1 < MaxTimingEvents)
+	{
+		GetWorldTimerManager().SetTimer(TimingEventTriggerTimer, this, &AInteractablePot::TriggerTimingEvent, TimingEventInterval, false);
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Scheduled next timing event in %.2f seconds"), TimingEventInterval);
+	}
+}
+
+void AInteractablePot::OnTimingEventSuccess()
+{
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Timing event SUCCESS!"));
+	SuccessfulTimingEvents++;
+
+	// Optional: Add benefits for successful timing events
+	// Could improve cooking quality, reduce cooking time, etc.
+	
+	// Play success sound if desired
+	if (CookingSuccessSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, CookingSuccessSound, GetActorLocation());
+	}
+
+	// NEW: Trigger camera shake for timing event success
+	if (TimingEventSuccessCameraShakeClass)
+	{
+		APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+		if (PlayerController)
+		{
+			PlayerController->ClientStartCameraShake(TimingEventSuccessCameraShakeClass);
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Triggered timing event success camera shake"));
+		}
+	}
+}
+
+void AInteractablePot::OnTimingEventFailure()
+{
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Timing event FAILED!"));
+	FailedTimingEvents++;
+
+	// NEW: Apply penalty for failed timing events
+	if (TimingEventFailurePenalty > 0.0f && CookingTimerHandle.IsValid())
+	{
+		// Get remaining time on cooking timer
+		float RemainingTime = GetWorldTimerManager().GetTimerRemaining(CookingTimerHandle);
+		if (RemainingTime > 0.0f)
+		{
+			// Clear current timer
+			GetWorldTimerManager().ClearTimer(CookingTimerHandle);
+			
+			// Restart timer with additional penalty time
+			float NewRemainingTime = RemainingTime + TimingEventFailurePenalty;
+			GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, NewRemainingTime, false);
+			
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot: Timing event failure! Cooking time extended by %.2f seconds (new remaining: %.2f)"), 
+				TimingEventFailurePenalty, NewRemainingTime);
+		}
+	}
+	
+	// Play failure sound if desired
+	if (CookingFailSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+	}
+}
