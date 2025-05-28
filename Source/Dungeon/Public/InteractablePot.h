@@ -17,11 +17,15 @@
 #include "NiagaraSystem.h"    // Include for Niagara System asset
 #include "Components/AudioComponent.h"
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
+#include "Cooking/CookingMinigameBase.h" // NEW: Added for minigame system
 #include "Camera/CameraShakeBase.h" // Include for camera shake
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
 class UCookingWidget;
+
+// Forward declarations for new minigame system
+class UCookingMinigameBase;
 
 // Forward declaration for SoundBase
 class USoundBase;
@@ -88,7 +92,16 @@ public:
 	// NEW: Checks if the player owns the recipe for the given result item ID
 	bool CheckPlayerOwnsRecipe(FName ResultItemID);
 
-	// --- Timing Minigame Functions ---
+	// --- Minigame Functions ---
+	// NEW: Start the cooking minigame
+	UFUNCTION(BlueprintCallable, Category = "Cooking|Minigame")
+	void StartCookingMinigame();
+
+	// NEW: End the cooking minigame with result
+	UFUNCTION(BlueprintCallable, Category = "Cooking|Minigame")
+	void EndCookingMinigame(ECookingMinigameResult Result);
+
+	// --- Timing Minigame Functions (기존 시스템, 호환성 유지) ---
 	// NEW: Handle successful timing event
 	UFUNCTION(BlueprintCallable, Category = "Cooking|Minigame")
 	void OnTimingEventSuccess();
@@ -296,6 +309,23 @@ protected:
 
 	// NEW: Trigger a timing event during cooking (Internal function)
 	void TriggerTimingEvent();
+
+	// --- Minigame System ---
+	// NEW: Current active minigame instance
+	UPROPERTY()
+	TObjectPtr<UCookingMinigameBase> CurrentMinigame;
+
+	// NEW: Available minigame classes for different cooking methods
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Minigames")
+	TMap<FString, TSubclassOf<UCookingMinigameBase>> MinigameClasses;
+
+	// NEW: Whether to use minigames instead of traditional timing system
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Settings")
+	bool bUseMinigameSystem = true;
+
+	// NEW: Minigame quality affects final result
+	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Settings")
+	bool bMinigameAffectsQuality = true;
 
 private:
 	// --- Timing Minigame Variables ---

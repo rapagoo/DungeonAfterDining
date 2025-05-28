@@ -15,6 +15,7 @@
 class AInventoryItemActor;
 class AInteractableTable;
 class AInteractablePot;
+class UCookingMinigameBase;
 class UButton;
 class UTextBlock;
 class UVerticalBox;
@@ -47,6 +48,27 @@ public:
 
 	/** NEW: Check if timing event has expired */
 	void CheckTimingEventTimeout();
+
+	/** NEW: Called when the Stir button is clicked during cooking */
+	UFUNCTION()
+	void OnStirButtonClicked();
+
+	// --- NEW: Minigame System Functions ---
+	/** Called when a cooking minigame starts */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void OnMinigameStarted(UCookingMinigameBase* Minigame);
+
+	/** Called when a cooking minigame updates */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void OnMinigameUpdated(float Score, int32 Phase);
+
+	/** Called when a cooking minigame ends */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void OnMinigameEnded(int32 Result);
+
+	/** Handle minigame input */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void HandleMinigameInput(const FString& InputType);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -109,11 +131,16 @@ protected:
 	UFUNCTION()
 	void OnCollectButtonClicked();
 
-	/** NEW: Called when the Stir button is clicked during cooking */
-	UFUNCTION()
-	void OnStirButtonClicked();
-
 	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
 	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);
+
+private:
+	/** NEW: Current active minigame reference */
+	UPROPERTY()
+	TWeakObjectPtr<UCookingMinigameBase> CurrentMinigame;
+
+	/** NEW: Whether we're currently in minigame mode */
+	UPROPERTY()
+	bool bIsInMinigameMode = false;
 
 }; 
