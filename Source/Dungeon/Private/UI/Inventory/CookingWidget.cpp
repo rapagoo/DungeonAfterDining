@@ -46,6 +46,32 @@ void UCookingWidget::NativeConstruct()
 		StirButton->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
+	// NEW: Grilling minigame buttons
+	if (FlipButton)
+	{
+		FlipButton->OnClicked.AddDynamic(this, &UCookingWidget::OnFlipButtonClicked);
+		FlipButton->SetIsEnabled(false);
+		FlipButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (HeatUpButton)
+	{
+		HeatUpButton->OnClicked.AddDynamic(this, &UCookingWidget::OnHeatUpButtonClicked);
+		HeatUpButton->SetIsEnabled(false);
+		HeatUpButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (HeatDownButton)
+	{
+		HeatDownButton->OnClicked.AddDynamic(this, &UCookingWidget::OnHeatDownButtonClicked);
+		HeatDownButton->SetIsEnabled(false);
+		HeatDownButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (CheckButton)
+	{
+		CheckButton->OnClicked.AddDynamic(this, &UCookingWidget::OnCheckButtonClicked);
+		CheckButton->SetIsEnabled(false);
+		CheckButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
 	if (StatusText)
 	{
 		StatusText->SetText(FText::FromString(TEXT("")));
@@ -502,6 +528,16 @@ void UCookingWidget::OnStirButtonClicked()
 {
 	UE_LOG(LogTemp, Log, TEXT("Stir Button Clicked!"));
 	
+	// NEW: Check if we're in minigame mode first
+	if (bIsInMinigameMode && CurrentMinigame.IsValid())
+	{
+		UE_LOG(LogTemp, Log, TEXT("OnStirButtonClicked - Processing as minigame input"));
+		// 굽기 미니게임에서는 Flip 입력으로 처리
+		HandleMinigameInput(TEXT("Flip"));
+		return;
+	}
+	
+	// 기존 타이밍 시스템 처리
 	if (!bIsTimingEventActive)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Stir button clicked but no timing event is active."));
@@ -621,5 +657,425 @@ void UCookingWidget::CheckTimingEventTimeout()
 		// Reset timing event state
 		bIsTimingEventActive = false;
 		TimingEventStartTime = 0.0f;
+	}
+}
+
+// NEW: Minigame system functions
+void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
+{
+	if (!Minigame)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::OnMinigameStarted - Invalid minigame"));
+		return;
+	}
+
+	CurrentMinigame = Minigame;
+	bIsInMinigameMode = true;
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameStarted - Minigame started"));
+
+	// 미니게임 종류 확인
+	FString MinigameType = Minigame->GetClass()->GetName();
+	bool bIsGrillingGame = MinigameType.Contains(TEXT("Grilling"));
+	bool bIsRhythmGame = MinigameType.Contains(TEXT("Rhythm"));
+
+	// UI 업데이트 - 미니게임 모드 활성화
+	if (StatusText)
+	{
+		if (bIsGrillingGame)
+		{
+			StatusText->SetText(FText::FromString(TEXT("🍖 굽기 미니게임 시작! 뒤집기, 화력 조절, 확인 버튼을 사용하세요!")));
+		}
+		else if (bIsRhythmGame)
+		{
+			StatusText->SetText(FText::FromString(TEXT("🎵 리듬 미니게임 시작! 'Stir' 버튼을 타이밍에 맞춰 누르세요!")));
+		}
+		else
+		{
+			StatusText->SetText(FText::FromString(TEXT("🎮 미니게임 시작!")));
+		}
+	}
+
+	// ActionText 초기화
+	if (ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("⏳ 액션을 기다려주세요...")));
+	}
+
+	// 미니게임 종류에 따른 버튼 표시
+	if (bIsGrillingGame)
+	{
+		// 굽기 미니게임: Flip, HeatUp, HeatDown, Check 버튼 표시
+		if (FlipButton)
+		{
+			FlipButton->SetVisibility(ESlateVisibility::Visible);
+			FlipButton->SetIsEnabled(false); // 타이밍에 따라 활성화/비활성화
+		}
+		if (HeatUpButton)
+		{
+			HeatUpButton->SetVisibility(ESlateVisibility::Visible);
+			HeatUpButton->SetIsEnabled(false);
+		}
+		if (HeatDownButton)
+		{
+			HeatDownButton->SetVisibility(ESlateVisibility::Visible);
+			HeatDownButton->SetIsEnabled(false);
+		}
+		if (CheckButton)
+		{
+			CheckButton->SetVisibility(ESlateVisibility::Visible);
+			CheckButton->SetIsEnabled(false);
+		}
+		// Stir 버튼 숨기기
+		if (StirButton)
+		{
+			StirButton->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	else
+	{
+		// 리듬 미니게임: Stir 버튼만 표시
+		if (StirButton)
+		{
+			StirButton->SetVisibility(ESlateVisibility::Visible);
+			StirButton->SetIsEnabled(false);
+		}
+		// 굽기 버튼들 숨기기
+		if (FlipButton) FlipButton->SetVisibility(ESlateVisibility::Hidden);
+		if (HeatUpButton) HeatUpButton->SetVisibility(ESlateVisibility::Hidden);
+		if (HeatDownButton) HeatDownButton->SetVisibility(ESlateVisibility::Hidden);
+		if (CheckButton) CheckButton->SetVisibility(ESlateVisibility::Hidden);
+	}
+
+	// 다른 버튼들 비활성화
+	if (CookButton)
+	{
+		CookButton->SetIsEnabled(false);
+	}
+	if (AddIngredientButton)
+	{
+		AddIngredientButton->SetIsEnabled(false);
+	}
+}
+
+void UCookingWidget::OnMinigameUpdated(float Score, int32 Phase)
+{
+	if (!bIsInMinigameMode)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameUpdated - Score: %.2f, Phase: %d"), Score, Phase);
+
+	// StatusText는 점수와 전체 상태만 표시 (ActionText는 별도로 관리)
+	if (StatusText)
+	{
+		FString StatusMessage;
+		
+		if (Score < 0)
+		{
+			StatusMessage = FString::Printf(TEXT("🎮 미니게임 | 점수: %.0f | ❌ 실패!"), Score);
+		}
+		else
+		{
+			StatusMessage = FString::Printf(TEXT("🎮 미니게임 | 점수: %.0f"), Score);
+		}
+		
+		StatusText->SetText(FText::FromString(StatusMessage));
+	}
+
+	// 버튼 상태는 UpdateRequiredAction에서만 관리하므로 여기서는 터치하지 않음
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameUpdated - Status updated, buttons managed by UpdateRequiredAction"));
+}
+
+void UCookingWidget::OnMinigameEnded(int32 Result)
+{
+	bIsInMinigameMode = false;
+	CurrentMinigame = nullptr;
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameEnded - Result: %d"), Result);
+
+	// 결과에 따른 메시지 표시
+	if (StatusText)
+	{
+		FString ResultMessage;
+		switch (Result)
+		{
+		case 1: // Perfect
+			ResultMessage = TEXT("🌟 완벽한 요리! 최고입니다!");
+			break;
+		case 2: // Good
+			ResultMessage = TEXT("👍 좋은 요리! 잘 하셨어요!");
+			break;
+		case 3: // Average
+			ResultMessage = TEXT("😊 평범한 요리 괜찮네요");
+			break;
+		case 4: // Poor
+			ResultMessage = TEXT("😕 아쉬운 요리... 다음엔 더 잘할 수 있어요");
+			break;
+		case 5: // Failed
+			ResultMessage = TEXT("💔 요리 실패! 다시 시도해보세요");
+			break;
+		default:
+			ResultMessage = TEXT("✅ 요리 완료! 수거하세요");
+			break;
+		}
+		StatusText->SetText(FText::FromString(ResultMessage));
+	}
+
+	// ActionText 정리
+	if (ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("")));
+	}
+
+	// 미니게임 버튼들 숨기기
+	if (StirButton)
+	{
+		StirButton->SetVisibility(ESlateVisibility::Hidden);
+		StirButton->SetIsEnabled(false);
+	}
+	if (FlipButton)
+	{
+		FlipButton->SetVisibility(ESlateVisibility::Hidden);
+		FlipButton->SetIsEnabled(false);
+	}
+	if (HeatUpButton)
+	{
+		HeatUpButton->SetVisibility(ESlateVisibility::Hidden);
+		HeatUpButton->SetIsEnabled(false);
+	}
+	if (HeatDownButton)
+	{
+		HeatDownButton->SetVisibility(ESlateVisibility::Hidden);
+		HeatDownButton->SetIsEnabled(false);
+	}
+	if (CheckButton)
+	{
+		CheckButton->SetVisibility(ESlateVisibility::Hidden);
+		CheckButton->SetIsEnabled(false);
+	}
+
+	// 수거 버튼 활성화 (요리가 완료되었으므로)
+	if (CollectButton)
+	{
+		CollectButton->SetVisibility(ESlateVisibility::Visible);
+		CollectButton->SetIsEnabled(true);
+	}
+
+	// 다른 버튼들 상태 복원
+	if (CookButton)
+	{
+		CookButton->SetIsEnabled(false); // 이미 요리했으므로 비활성화
+	}
+	if (AddIngredientButton)
+	{
+		AddIngredientButton->SetIsEnabled(false); // 요리 중이므로 비활성화
+	}
+}
+
+void UCookingWidget::HandleMinigameInput(const FString& InputType)
+{
+	if (!bIsInMinigameMode || !CurrentMinigame.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::HandleMinigameInput - Not in minigame mode or invalid minigame"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::HandleMinigameInput - Input: %s"), *InputType);
+
+	// 현재 점수를 저장해서 변화를 감지
+	float PreviousScore = CurrentMinigame->GetCurrentScore();
+
+	// 미니게임에 입력 전달
+	CurrentMinigame->HandlePlayerInput(InputType);
+
+	// 점수 변화를 확인하여 피드백 제공
+	float NewScore = CurrentMinigame->GetCurrentScore();
+	float ScoreDifference = NewScore - PreviousScore;
+
+	// 시각적 피드백 제공
+	if (StatusText)
+	{
+		FString FeedbackMessage;
+		if (ScoreDifference > 0)
+		{
+			// 성공적인 입력
+			if (ScoreDifference >= 100.0f)
+			{
+				FeedbackMessage = FString::Printf(TEXT("🌟 PERFECT! +%.0f 점"), ScoreDifference);
+			}
+			else if (ScoreDifference >= 75.0f)
+			{
+				FeedbackMessage = FString::Printf(TEXT("👍 GOOD! +%.0f 점"), ScoreDifference);
+			}
+			else
+			{
+				FeedbackMessage = FString::Printf(TEXT("✅ HIT! +%.0f 점"), ScoreDifference);
+			}
+		}
+		else if (ScoreDifference < 0)
+		{
+			// 실패한 입력 (점수 차감)
+			FeedbackMessage = FString::Printf(TEXT("❌ 타이밍 실패! %.0f 점"), ScoreDifference);
+		}
+		else
+		{
+			// 점수 변화 없음 (이미 처리된 이벤트나 잘못된 타이밍)
+			FeedbackMessage = TEXT("⏸️ 아직 타이밍이 아닙니다!");
+		}
+		
+		StatusText->SetText(FText::FromString(FeedbackMessage));
+	}
+
+	// 버튼 상태는 UpdateMinigame에서 관리됨
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::HandleMinigameInput - Score change: %.2f"), ScoreDifference);
+}
+
+// NEW: Grilling minigame button handlers
+void UCookingWidget::OnFlipButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Flip Button Clicked!"));
+	if (bIsInMinigameMode && CurrentMinigame.IsValid())
+	{
+		HandleMinigameInput(TEXT("Flip"));
+	}
+}
+
+void UCookingWidget::OnHeatUpButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Heat Up Button Clicked!"));
+	if (bIsInMinigameMode && CurrentMinigame.IsValid())
+	{
+		HandleMinigameInput(TEXT("HeatUp"));
+	}
+}
+
+void UCookingWidget::OnHeatDownButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Heat Down Button Clicked!"));
+	if (bIsInMinigameMode && CurrentMinigame.IsValid())
+	{
+		HandleMinigameInput(TEXT("HeatDown"));
+	}
+}
+
+void UCookingWidget::OnCheckButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Check Button Clicked!"));
+	if (bIsInMinigameMode && CurrentMinigame.IsValid())
+	{
+		HandleMinigameInput(TEXT("Check"));
+	}
+}
+
+void UCookingWidget::UpdateRequiredAction(const FString& ActionType, bool bActionRequired)
+{
+	if (!bIsInMinigameMode)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - Action: %s, Required: %s"), 
+		   *ActionType, bActionRequired ? TEXT("true") : TEXT("false"));
+
+	// 모든 미니게임 버튼을 비활성화
+	if (FlipButton) 
+	{
+		FlipButton->SetIsEnabled(false);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - FlipButton disabled"));
+	}
+	if (HeatUpButton) 
+	{
+		HeatUpButton->SetIsEnabled(false);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - HeatUpButton disabled"));
+	}
+	if (HeatDownButton) 
+	{
+		HeatDownButton->SetIsEnabled(false);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - HeatDownButton disabled"));
+	}
+	if (CheckButton) 
+	{
+		CheckButton->SetIsEnabled(false);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - CheckButton disabled"));
+	}
+	if (StirButton) 
+	{
+		StirButton->SetIsEnabled(false);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - StirButton disabled"));
+	}
+
+	if (bActionRequired && !ActionType.IsEmpty())
+	{
+		// 필요한 액션에 따라 해당 버튼만 활성화
+		if (ActionType == TEXT("Flip"))
+		{
+			if (FlipButton)
+			{
+				FlipButton->SetIsEnabled(true);
+				UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - FlipButton ENABLED"));
+			}
+			if (ActionText)
+			{
+				ActionText->SetText(FText::FromString(TEXT("🔄 지금 뒤집으세요!")));
+			}
+		}
+		else if (ActionType == TEXT("HeatUp"))
+		{
+			if (HeatUpButton)
+			{
+				HeatUpButton->SetIsEnabled(true);
+				UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - HeatUpButton ENABLED"));
+			}
+			if (ActionText)
+			{
+				ActionText->SetText(FText::FromString(TEXT("🔥 화력을 높이세요!")));
+			}
+		}
+		else if (ActionType == TEXT("HeatDown"))
+		{
+			if (HeatDownButton)
+			{
+				HeatDownButton->SetIsEnabled(true);
+				UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - HeatDownButton ENABLED"));
+			}
+			if (ActionText)
+			{
+				ActionText->SetText(FText::FromString(TEXT("❄️ 화력을 낮추세요!")));
+			}
+		}
+		else if (ActionType == TEXT("Check"))
+		{
+			if (CheckButton)
+			{
+				CheckButton->SetIsEnabled(true);
+				UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - CheckButton ENABLED"));
+			}
+			if (ActionText)
+			{
+				ActionText->SetText(FText::FromString(TEXT("👀 익힘 정도를 확인하세요!")));
+			}
+		}
+		else if (ActionType == TEXT("Flip") && StirButton) // 리듬 게임에서 Flip은 Stir로 처리
+		{
+			if (StirButton)
+			{
+				StirButton->SetIsEnabled(true);
+				UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateRequiredAction - StirButton ENABLED for Flip"));
+			}
+			if (ActionText)
+			{
+				ActionText->SetText(FText::FromString(TEXT("🎵 지금 젓으세요!")));
+			}
+		}
+	}
+	else
+	{
+		// 액션이 필요하지 않을 때
+		if (ActionText)
+		{
+			ActionText->SetText(FText::FromString(TEXT("⏳ 다음 액션을 기다려주세요...")));
+		}
 	}
 } 

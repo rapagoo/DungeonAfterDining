@@ -153,6 +153,12 @@ public:
 
 protected:
     /**
+     * 점수를 추가합니다 (음수 방지 오버라이드)
+     * @param Points 추가할 점수
+     */
+    virtual void AddScore(float Points) override;
+
+    /**
      * 이벤트 타이밍을 판정합니다
      * @param Event 판정할 이벤트
      * @param InputTime 입력 시간

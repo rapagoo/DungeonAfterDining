@@ -26,6 +26,8 @@
 #include "Materials/MaterialInstanceDynamic.h" // Include for MID
 #include "Components/AudioComponent.h" // Make sure this is included, though already in .h it's good practice for .cpp if directly used for creation
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
+#include "Cooking/GrillingMinigame.h" // NEW: Include for grilling minigame
+#include "Cooking/RhythmCookingMinigame.h" // NEW: Include for rhythm minigame
 #include "CookingCameraShake.h" // Include for cooking camera shake
 #include "GameFramework/PlayerController.h" // Include for player controller access
 
@@ -97,6 +99,16 @@ AInteractablePot::AInteractablePot()
 	BurntMaterialParamValue = 2.0f; // Default value, adjustable in BP
 	InitialMaterialParamValue = 0.0f; // Default start value
 	// --- End Initialization ---
+
+	// --- NEW: Initialize Minigame System ---
+	bUseMinigameSystem = true; // 기본적으로 미니게임 시스템 사용
+	bMinigameAffectsQuality = true; // 미니게임 결과가 품질에 영향
+
+	// 굽기 미니게임 등록 (CookingMethodGrilling의 이름과 맞춰야 함)
+	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
+	
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Minigame system initialized with %d registered minigames"), MinigameClasses.Num());
+	// --- End Minigame System ---
 }
 
 // Called when the game starts or when spawned
@@ -105,6 +117,9 @@ void AInteractablePot::BeginPlay()
 	Super::BeginPlay();
 
 	InitializeCookingMethod(); // Initialize the cooking method
+
+	// NEW: 미니게임 클래스들을 등록
+	RegisterMinigameClasses();
 
 	// Bind the overlap function
 	// IngredientDetectionVolume->OnComponentBeginOverlap.AddDynamic(this, &AInteractablePot::OnIngredientOverlapBegin);
@@ -169,6 +184,12 @@ void AInteractablePot::InitializeCookingMethod()
 void AInteractablePot::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// NEW: Update active minigame
+	if (CurrentMinigame && CurrentMinigame->IsGameActive())
+	{
+		CurrentMinigame->UpdateMinigame(DeltaTime);
+	}
 
 	// Only proceed if there are MIDs to update
 	if (IngredientMIDMap.IsEmpty())
@@ -412,26 +433,27 @@ void AInteractablePot::StartCooking()
 		bIsBurnt = false;
 		CookingStartTime = GetWorld()->GetTimeSeconds(); // Record start time for material interpolation
 
-		GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
+		// NEW: Start minigame or traditional timing system
+		if (bUseMinigameSystem)
+		{
+			// 미니게임 사용 시에는 일반 요리 타이머를 설정하지 않음
+			// 미니게임이 끝나면 EndCookingMinigame에서 OnCookingComplete를 호출
+			UE_LOG(LogTemp, Log, TEXT("Cooking started with MINIGAME for item: %s. Duration: %.2f seconds via %s"), *CurrentCookedResultID.ToString(), CookingDuration, *CurrentCookingMethod->GetCookingMethodName().ToString());
+		}
+		else
+		{
+			// 기존 시스템에서만 요리 타이머 설정
+			GetWorldTimerManager().SetTimer(CookingTimerHandle, this, &AInteractablePot::OnCookingComplete, CookingDuration, false);
+			UE_LOG(LogTemp, Log, TEXT("Cooking started with TIMER for item: %s. Duration: %.2f seconds via %s"), *CurrentCookedResultID.ToString(), CookingDuration, *CurrentCookingMethod->GetCookingMethodName().ToString());
+		}
 		
-		UE_LOG(LogTemp, Log, TEXT("Cooking started for item: %s. Duration: %.2f seconds via %s"), *CurrentCookedResultID.ToString(), CookingDuration, *CurrentCookingMethod->GetCookingMethodName().ToString());
-
 		if (StartCookingSound)
 		{
 			UGameplayStatics::PlaySoundAtLocation(this, StartCookingSound, GetActorLocation());
 		}
 
-		// --- Trigger Camera Shake for Cooking Start ---
-		if (CookingStartCameraShakeClass)
-		{
-			APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
-			if (PlayerController)
-			{
-				PlayerController->ClientStartCameraShake(CookingStartCameraShakeClass);
-				UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Triggered cooking start camera shake"));
-			}
-		}
-		// -----------------------------------------------
+		// Initialize MIDs for cooking visuals if not already done (should be done on add ingredient)
+		// For now, we assume MIDs are ready from AddIngredient. The Tick function will handle interpolation.
 
 		if (CookingSteamParticles)
 		{
@@ -448,16 +470,23 @@ void AInteractablePot::StartCooking()
 			UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Fire Audio Played for cooking."));
         }
 
-		// Initialize MIDs for cooking visuals if not already done (should be done on add ingredient)
-		// For now, we assume MIDs are ready from AddIngredient. The Tick function will handle interpolation.
-
-		// NEW: Start timing minigame events
-		SuccessfulTimingEvents = 0;
-		FailedTimingEvents = 0;
-		if (TimingEventInterval > 0.0f && MaxTimingEvents > 0)
+		// NEW: Start minigame or traditional timing system
+		if (bUseMinigameSystem)
 		{
-			GetWorldTimerManager().SetTimer(TimingEventTriggerTimer, this, &AInteractablePot::TriggerTimingEvent, TimingEventInterval, false);
-			UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Started timing event system. First event in %.2f seconds"), TimingEventInterval);
+			StartCookingMinigame();
+			// 미니게임 사용 시에는 일반 요리 타이머를 설정하지 않음
+			// 미니게임이 끝나면 EndCookingMinigame에서 OnCookingComplete를 호출
+		}
+		else
+		{
+			// NEW: Start timing minigame events (기존 시스템)
+			SuccessfulTimingEvents = 0;
+			FailedTimingEvents = 0;
+			if (TimingEventInterval > 0.0f && MaxTimingEvents > 0)
+			{
+				GetWorldTimerManager().SetTimer(TimingEventTriggerTimer, this, &AInteractablePot::TriggerTimingEvent, TimingEventInterval, false);
+				UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Started timing event system. First event in %.2f seconds"), TimingEventInterval);
+			}
 		}
 	}
 	else
@@ -944,5 +973,163 @@ void AInteractablePot::OnTimingEventFailure()
 	if (CookingFailSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, CookingFailSound, GetActorLocation());
+	}
+}
+
+// NEW: Minigame system functions
+void AInteractablePot::StartCookingMinigame()
+{
+	if (CurrentMinigame)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::StartCookingMinigame - Minigame already active"));
+		return;
+	}
+
+	if (!CurrentCookingMethod)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCookingMinigame - No cooking method available"));
+		return;
+	}
+
+	// 요리법 이름을 가져옴
+	FString CookingMethodName = CurrentCookingMethod->GetCookingMethodName().ToString();
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Starting minigame for method: %s"), *CookingMethodName);
+	
+	// 사용 가능한 미니게임 클래스들 로그 출력
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Available minigame classes: %d"), MinigameClasses.Num());
+	for (const auto& Pair : MinigameClasses)
+	{
+		UE_LOG(LogTemp, Log, TEXT("  - %s"), *Pair.Key);
+	}
+
+	// 해당 요리법에 맞는 미니게임 클래스 찾기
+	TSubclassOf<UCookingMinigameBase>* MinigameClass = MinigameClasses.Find(CookingMethodName);
+	if (!MinigameClass || !(*MinigameClass))
+	{
+		// 기본 미니게임이나 기존 시스템으로 폴백
+		UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::StartCookingMinigame - No minigame found for method %s, trying Default"), *CookingMethodName);
+		
+		// 기본 미니게임 시도
+		MinigameClass = MinigameClasses.Find(TEXT("Default"));
+		if (!MinigameClass || !(*MinigameClass))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::StartCookingMinigame - No default minigame found, falling back to traditional system"));
+			
+			// 기존 타이밍 시스템으로 전환
+			SuccessfulTimingEvents = 0;
+			FailedTimingEvents = 0;
+			if (TimingEventInterval > 0.0f && MaxTimingEvents > 0)
+			{
+				GetWorldTimerManager().SetTimer(TimingEventTriggerTimer, this, &AInteractablePot::TriggerTimingEvent, TimingEventInterval, false);
+			}
+			return;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Found minigame class: %s"), *(*MinigameClass)->GetName());
+
+	// 미니게임 인스턴스 생성
+	CurrentMinigame = NewObject<UCookingMinigameBase>(this, *MinigameClass);
+	if (!CurrentMinigame)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AInteractablePot::StartCookingMinigame - Failed to create minigame instance"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Created minigame instance successfully"));
+
+	// 미니게임 시작
+	CurrentMinigame->StartMinigame(CookingWidgetRef.Get(), this);
+	
+	// 위젯에 미니게임 시작 알림
+	if (CookingWidgetRef)
+	{
+		CookingWidgetRef->OnMinigameStarted(CurrentMinigame.Get());
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Notified widget about minigame start"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::StartCookingMinigame - No cooking widget available"));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Minigame started successfully"));
+}
+
+void AInteractablePot::EndCookingMinigame(ECookingMinigameResult Result)
+{
+	if (!CurrentMinigame)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AInteractablePot::EndCookingMinigame - No active minigame"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Minigame ended with result: %d"), (int32)Result);
+
+	// 결과에 따른 처리
+	if (bMinigameAffectsQuality)
+	{
+		switch (Result)
+		{
+		case ECookingMinigameResult::Perfect:
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Perfect result! No burning risk."));
+			// 완벽한 결과는 타지 않도록 함
+			GetWorldTimerManager().ClearTimer(BurningTimerHandle);
+			break;
+		case ECookingMinigameResult::Good:
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Good result! Extended burning time."));
+			// 좋은 결과는 타는 시간을 늘림
+			if (BurningDuration > 0.0f)
+			{
+				BurningDuration *= 1.5f;
+			}
+			break;
+		case ECookingMinigameResult::Poor:
+		case ECookingMinigameResult::Failed:
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Poor/Failed result! Reduced burning time."));
+			// 나쁜 결과는 타는 시간을 줄임
+			if (BurningDuration > 0.0f)
+			{
+				BurningDuration *= 0.5f;
+			}
+			break;
+		default:
+			// Average는 기본값 유지
+			break;
+		}
+	}
+
+	// 위젯에 미니게임 종료 알림
+	if (CookingWidgetRef)
+	{
+		CookingWidgetRef->OnMinigameEnded((int32)Result);
+	}
+
+	// 미니게임 인스턴스 정리
+	CurrentMinigame = nullptr;
+
+	// 일반적인 요리 완료 처리 호출
+	OnCookingComplete();
+}
+
+void AInteractablePot::RegisterMinigameClasses()
+{
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::RegisterMinigameClasses - Registering available minigames"));
+
+	// 굽기 미니게임 등록
+	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
+	
+	// 리듬 미니게임 등록 (기본값으로도 사용)
+	MinigameClasses.Add(TEXT("Rhythm"), URhythmCookingMinigame::StaticClass());
+	MinigameClasses.Add(TEXT("Default"), URhythmCookingMinigame::StaticClass());
+
+	// 다른 요리법들도 기본적으로 리듬 게임 사용
+	MinigameClasses.Add(TEXT("Frying"), URhythmCookingMinigame::StaticClass());
+	MinigameClasses.Add(TEXT("Boiling"), URhythmCookingMinigame::StaticClass());
+
+	// 등록된 미니게임들 로그 출력
+	UE_LOG(LogTemp, Log, TEXT("AInteractablePot::RegisterMinigameClasses - Registered %d minigame classes:"), MinigameClasses.Num());
+	for (const auto& Pair : MinigameClasses)
+	{
+		UE_LOG(LogTemp, Log, TEXT("  - %s: %s"), *Pair.Key, *Pair.Value->GetName());
 	}
 }

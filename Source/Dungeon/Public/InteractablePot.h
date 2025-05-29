@@ -307,6 +307,9 @@ protected:
 	// Initializes the CurrentCookingMethod based on DefaultCookingMethodClass
 	void InitializeCookingMethod();
 
+	// NEW: Register available minigame classes
+	void RegisterMinigameClasses();
+
 	// NEW: Trigger a timing event during cooking (Internal function)
 	void TriggerTimingEvent();
 

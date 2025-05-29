@@ -53,6 +53,19 @@ public:
 	UFUNCTION()
 	void OnStirButtonClicked();
 
+	/** NEW: Grilling minigame button handlers */
+	UFUNCTION()
+	void OnFlipButtonClicked();
+
+	UFUNCTION()
+	void OnHeatUpButtonClicked();
+
+	UFUNCTION()
+	void OnHeatDownButtonClicked();
+
+	UFUNCTION()
+	void OnCheckButtonClicked();
+
 	// --- NEW: Minigame System Functions ---
 	/** Called when a cooking minigame starts */
 	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
@@ -69,6 +82,10 @@ public:
 	/** Handle minigame input */
 	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
 	void HandleMinigameInput(const FString& InputType);
+
+	/** NEW: Update required action for current minigame */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void UpdateRequiredAction(const FString& ActionType, bool bActionRequired);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -89,6 +106,19 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UButton* StirButton;
 
+	/** NEW: Grilling minigame buttons */
+	UPROPERTY(meta = (BindWidget))
+	UButton* FlipButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* HeatUpButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* HeatDownButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* CheckButton;
+
 	/** Vertical box to list the added ingredients */
 	UPROPERTY(meta = (BindWidget))
 	UVerticalBox* IngredientsList;
@@ -96,6 +126,10 @@ protected:
 	/** NEW: TextBlock to display current cooking status */
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* StatusText;
+
+	/** NEW: TextBlock to display current required action */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* ActionText;
 
 	/** The class of widget to represent a single ingredient in the list */
 	UPROPERTY(EditDefaultsOnly, Category="Cooking UI")
