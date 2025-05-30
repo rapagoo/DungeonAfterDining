@@ -28,8 +28,10 @@
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
 #include "Cooking/GrillingMinigame.h" // NEW: Include for grilling minigame
 #include "Cooking/RhythmCookingMinigame.h" // NEW: Include for rhythm minigame
+#include "Cooking/FryingRhythmMinigame.h" // NEW: Include for frying rhythm minigame
 #include "CookingCameraShake.h" // Include for cooking camera shake
 #include "GameFramework/PlayerController.h" // Include for player controller access
+#include "Audio/CookingAudioManager.h" // NEW: Include for cooking audio manager
 
 // Sets default values
 AInteractablePot::AInteractablePot()
@@ -82,6 +84,10 @@ AInteractablePot::AInteractablePot()
 	FireAudioComponent->bAutoActivate = false; // Don't play on spawn
 	// --- End Fire Audio Component ---
 
+	// --- Create Audio Manager Component ---
+	AudioManager = CreateDefaultSubobject<UCookingAudioManager>(TEXT("AudioManager"));
+	// --- End Audio Manager Component ---
+
 	CookingWidgetRef = nullptr; // Initialize widget reference
 
 	// DataTables are now expected to be assigned via Blueprint defaults.
@@ -106,6 +112,9 @@ AInteractablePot::AInteractablePot()
 
 	// 굽기 미니게임 등록 (CookingMethodGrilling의 이름과 맞춰야 함)
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
+	
+	// 튀기기 미니게임 등록 (CookingMethodFrying의 이름과 맞춰야 함)
+	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
 	
 	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Minigame system initialized with %d registered minigames"), MinigameClasses.Num());
 	// --- End Minigame System ---
@@ -1041,6 +1050,14 @@ void AInteractablePot::StartCookingMinigame()
 	// 미니게임 시작
 	CurrentMinigame->StartMinigame(CookingWidgetRef.Get(), this);
 	
+	// NEW: 오디오 매니저에게 요리 시작 알림
+	if (AudioManager)
+	{
+		FString MinigameTypeName = (*MinigameClass)->GetName();
+		AudioManager->StartCookingAudio(MinigameTypeName);
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Started cooking audio for %s"), *MinigameTypeName);
+	}
+	
 	// 위젯에 미니게임 시작 알림
 	if (CookingWidgetRef)
 	{
@@ -1104,6 +1121,13 @@ void AInteractablePot::EndCookingMinigame(ECookingMinigameResult Result)
 		CookingWidgetRef->OnMinigameEnded((int32)Result);
 	}
 
+	// NEW: 오디오 매니저에게 요리 종료 알림
+	if (AudioManager)
+	{
+		AudioManager->StopCookingAudio();
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Stopped cooking audio"));
+	}
+
 	// 미니게임 인스턴스 정리
 	CurrentMinigame = nullptr;
 
@@ -1118,12 +1142,14 @@ void AInteractablePot::RegisterMinigameClasses()
 	// 굽기 미니게임 등록
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
 	
+	// 튀기기 리듬 미니게임 등록
+	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
+	
 	// 리듬 미니게임 등록 (기본값으로도 사용)
 	MinigameClasses.Add(TEXT("Rhythm"), URhythmCookingMinigame::StaticClass());
 	MinigameClasses.Add(TEXT("Default"), URhythmCookingMinigame::StaticClass());
 
 	// 다른 요리법들도 기본적으로 리듬 게임 사용
-	MinigameClasses.Add(TEXT("Frying"), URhythmCookingMinigame::StaticClass());
 	MinigameClasses.Add(TEXT("Boiling"), URhythmCookingMinigame::StaticClass());
 
 	// 등록된 미니게임들 로그 출력

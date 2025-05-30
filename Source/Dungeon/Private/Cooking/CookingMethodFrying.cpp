@@ -1,6 +1,7 @@
 #include "Cooking/CookingMethodFrying.h"
 #include "Engine/DataTable.h"
-#include "Inventory/CookingRecipeStruct.h" // For FCookingRecipeStruct
+#include "Inventory/CookingRecipeStruct.h"
+#include "Inventory/InvenItemStruct.h"
 #include "Particles/ParticleSystem.h"      // For UParticleSystem
 #include "Sound/SoundBase.h"             // For USoundBase
 #include "GameplayTagsManager.h"         // For UGameplayTagsManager
@@ -8,76 +9,97 @@
 UCookingMethodFrying::UCookingMethodFrying()
 {
 	// Constructor for Frying method
-	CookingMethodTag = UGameplayTagsManager::Get().RequestGameplayTag(FName("Cooking.Method.Fry"));
+	CookingMethodTag = FGameplayTag::RequestGameplayTag(FName("Cooking.Method.Fry"));
 	OilTemperature = 180.0f;
 	FryingOilSplatterEffect = nullptr;
 	FryingSizzleSound = nullptr;
+	
+	// 기본 설정값
+	BaseFryingTime = 15.0f;
+	TimePerIngredient = 2.0f;
+	MaxFryingTime = 25.0f;
 }
 
 bool UCookingMethodFrying::ProcessIngredients_Implementation(const TArray<FName>& Ingredients, UDataTable* RecipeDataTable, UDataTable* ItemDataTable, FName& OutCookedItemID, float& OutCookingDuration)
 {
-	UE_LOG(LogTemp, Log, TEXT("Processing ingredients with Frying method (Tag: %s)."), *CookingMethodTag.ToString());
-
-	if (!RecipeDataTable)
+	if (!RecipeDataTable || Ingredients.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("RecipeDataTable is null in CookingMethodFrying."));
-		OutCookedItemID = NAME_None;
-		OutCookingDuration = 0.0f;
+		UE_LOG(LogTemp, Warning, TEXT("UCookingMethodFrying::ProcessIngredients - Invalid recipe table or no ingredients"));
 		return false;
 	}
 
-	if (!CookingMethodTag.IsValid())
-    {
-        UE_LOG(LogTemp, Error, TEXT("CookingMethodFrying: CookingMethodTag is not valid!"));
-        OutCookedItemID = NAME_None;
-        OutCookingDuration = 0.0f;
-        return false;
-    }
-
-	// TODO: Implement Frying-specific recipe logic.
-	// For example, recipes for frying might require a specific tag, or an "Oil" ingredient.
-	// Or, the same ingredients might produce a different result when fried compared to grilled.
-
-	// For now, let's use a simplified logic similar to Grilling, but assume it looks for recipes
-	// perhaps ending with "_Fried" in their ResultingItemID, or you could add a boolean like 'bIsFriedRecipe' to FCookingRecipeStruct.
-	for (auto It = RecipeDataTable->GetRowMap().CreateConstIterator(); It; ++It)
+	// 재료 정렬 (일관된 레시피 검색을 위해)
+	TArray<FName> SortedIngredients = Ingredients;
+	SortedIngredients.Sort([](const FName& A, const FName& B) 
 	{
-		FName RowName = It.Key();
-		FCookingRecipeStruct* Recipe = reinterpret_cast<FCookingRecipeStruct*>(It.Value());
+		return A.ToString() < B.ToString();
+	});
 
-		// Check if the recipe allows this cooking method (via Gameplay Tag) and ingredients match
-		if (Recipe && Recipe->AllowedCookingMethods.HasTag(CookingMethodTag) && Recipe->RequiredIngredients.Num() == Ingredients.Num())
+	// 레시피 테이블에서 매칭되는 레시피 찾기
+	const TArray<FName> RowNames = RecipeDataTable->GetRowNames();
+	for (const FName& RowName : RowNames)
+	{
+		FCookingRecipeStruct* RecipeRow = RecipeDataTable->FindRow<FCookingRecipeStruct>(RowName, TEXT("FryingProcessIngredients"));
+		if (!RecipeRow)
 		{
-			TArray<FName> TempIngredients = Ingredients;
-			bool bMatch = true;
-			for (const FName& RequiredIngredient : Recipe->RequiredIngredients)
-			{
-				if (TempIngredients.RemoveSingle(RequiredIngredient) == 0)
-				{
-					bMatch = false;
-					break;
-				}
-			}
+			continue;
+		}
 
-			if (bMatch)
+		// 이 레시피가 튀기기 요리법용인지 확인
+		if (!RecipeRow->AllowedCookingMethods.HasTag(CookingMethodTag))
+		{
+			continue;
+		}
+
+		// 재료 수가 맞는지 확인
+		if (RecipeRow->RequiredIngredients.Num() != SortedIngredients.Num())
+		{
+			continue;
+		}
+
+		// 재료를 정렬하여 비교
+		TArray<FName> SortedRecipeIngredients = RecipeRow->RequiredIngredients;
+		SortedRecipeIngredients.Sort([](const FName& A, const FName& B) 
+		{
+			return A.ToString() < B.ToString();
+		});
+
+		// 재료가 정확히 일치하는지 확인
+		bool bIngredientsMatch = true;
+		for (int32 i = 0; i < SortedIngredients.Num(); i++)
+		{
+			if (SortedIngredients[i] != SortedRecipeIngredients[i])
 			{
-				OutCookedItemID = Recipe->ResultingItemID; 
-				OutCookingDuration = Recipe->CookingDuration > 0 ? Recipe->CookingDuration * 0.8f : 4.0f; 
-				
-				UE_LOG(LogTemp, Log, TEXT("Frying Recipe Found: %s, Output: %s, Duration: %f"), *RowName.ToString(), *OutCookedItemID.ToString(), OutCookingDuration);
-				return true;
+				bIngredientsMatch = false;
+				break;
 			}
+		}
+
+		if (bIngredientsMatch)
+		{
+			// 매칭되는 레시피 발견!
+			OutCookedItemID = RecipeRow->ResultingItemID;
+			
+			// 튀기기 시간 계산 (재료 개수에 따라 조정)
+			OutCookingDuration = FMath::Clamp(
+				BaseFryingTime + (Ingredients.Num() * TimePerIngredient),
+				BaseFryingTime,
+				MaxFryingTime
+			);
+
+			UE_LOG(LogTemp, Log, TEXT("UCookingMethodFrying::ProcessIngredients - Found recipe '%s' -> '%s', Duration: %.2f seconds"), 
+				   *RowName.ToString(), *OutCookedItemID.ToString(), OutCookingDuration);
+			
+			return true;
 		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("No suitable frying recipe (Tag: %s) found for the given ingredients."), *CookingMethodTag.ToString());
-	OutCookedItemID = NAME_None;
-	OutCookingDuration = 0.0f;
-	return false; 
+	UE_LOG(LogTemp, Warning, TEXT("UCookingMethodFrying::ProcessIngredients - No frying recipe found for %d ingredients"), 
+		   Ingredients.Num());
+	return false;
 }
 
 FText UCookingMethodFrying::GetCookingMethodName_Implementation() const
 {
-	// You can localize this text later if needed
-	return FText::FromString(TEXT("튀기기")); // "Frying" in Korean
+	return FText::FromString(TEXT("Frying"));
 } 

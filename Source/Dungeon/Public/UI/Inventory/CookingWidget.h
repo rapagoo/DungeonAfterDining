@@ -19,6 +19,8 @@ class UCookingMinigameBase;
 class UButton;
 class UTextBlock;
 class UVerticalBox;
+class UImage;
+class UOverlay;
 
 /**
  * Widget for the cooking interface.
@@ -87,8 +89,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
 	void UpdateRequiredAction(const FString& ActionType, bool bActionRequired);
 
+	/** NEW: Set button text dynamically */
+	UFUNCTION(BlueprintCallable, Category = "UI Helper")
+	void SetButtonText(UButton* Button, const FString& Text);
+
+	/** NEW: Handle rhythm game input for frying */
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void HandleRhythmGameInput();
+
+	/** NEW: Rhythm game functions */
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void StartRhythmGameNote(const FString& ActionType, float NoteDuration);
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void UpdateRhythmGameTiming(float Progress);
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void EndRhythmGameNote();
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void ShowRhythmGameResult(const FString& Result);
+
 protected:
 	virtual void NativeConstruct() override;
+
+	/** NEW: Handle keyboard input */
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	/** Button to interact with nearby ingredient (Add to Pot originally, now Add to Inventory) */
 	UPROPERTY(meta = (BindWidget))
@@ -130,6 +156,30 @@ protected:
 	/** NEW: TextBlock to display current required action */
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* ActionText;
+
+	/** NEW: TextBlock to display rhythm game combo information */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* ComboText;
+
+	/** NEW: TextBlock to display cooking temperature for frying rhythm game */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* TemperatureText;
+
+	/** NEW: Rhythm game circular timing UI elements */
+	UPROPERTY(meta = (BindWidget))
+	class UImage* RhythmOuterCircle;
+
+	UPROPERTY(meta = (BindWidget))
+	class UImage* RhythmInnerCircle;
+
+	UPROPERTY(meta = (BindWidget))
+	class UOverlay* RhythmGameOverlay;
+
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* RhythmActionText;
+
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* RhythmTimingText;
 
 	/** The class of widget to represent a single ingredient in the list */
 	UPROPERTY(EditDefaultsOnly, Category="Cooking UI")
@@ -176,5 +226,33 @@ private:
 	/** NEW: Whether we're currently in minigame mode */
 	UPROPERTY()
 	bool bIsInMinigameMode = false;
+
+	/** NEW: Rhythm game state variables */
+	UPROPERTY()
+	bool bIsRhythmNoteActive = false;
+
+	UPROPERTY()
+	float RhythmNoteStartTime = 0.0f;
+
+	UPROPERTY()
+	float RhythmNoteDuration = 3.0f;
+
+	UPROPERTY()
+	FString CurrentRhythmAction = TEXT("");
+
+	UPROPERTY()
+	float InitialCircleScale = 3.0f;
+
+	/** NEW: Current required action for cooking */
+	UPROPERTY()
+	FString CurrentRequiredAction = TEXT("");
+
+	/** NEW: Whether we're in frying minigame mode */
+	UPROPERTY()
+	bool bIsFryingGame = false;
+
+	/** NEW: Current cooking method reference */
+	UPROPERTY()
+	TWeakObjectPtr<class UCookingMethodBase> CurrentCookingMethod;
 
 }; 

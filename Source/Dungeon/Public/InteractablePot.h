@@ -19,6 +19,7 @@
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
 #include "Cooking/CookingMinigameBase.h" // NEW: Added for minigame system
 #include "Camera/CameraShakeBase.h" // Include for camera shake
+#include "Audio/CookingAudioManager.h" // NEW: Include for cooking audio manager
 #include "InteractablePot.generated.h"
 
 // Forward declaration for CookingWidget if needed for delegate binding or direct reference
@@ -35,6 +36,9 @@ class UMaterialInstanceDynamic;
 
 // Forward declaration for CookingCameraShake
 class UCookingCameraShake;
+
+// Forward declaration for CookingAudioManager
+class UCookingAudioManager;
 
 UCLASS()
 class DUNGEON_API AInteractablePot : public AInteractableTable // Inherit from AInteractableTable or AActor
@@ -88,6 +92,10 @@ public:
 	/** Returns the ItemDataTable for read-only access. */
 	UFUNCTION(BlueprintPure, Category = "Cooking|Data") // Blueprint에서도 필요하면 호출 가능하도록 설정
 	UDataTable* GetItemDataTable() const { return ItemDataTable.Get(); }
+
+	/** Returns the AudioManager for read-only access. */
+	UFUNCTION(BlueprintPure, Category = "Cooking|Audio")
+	UCookingAudioManager* GetAudioManager() const { return AudioManager.Get(); }
 
 	// NEW: Checks if the player owns the recipe for the given result item ID
 	bool CheckPlayerOwnsRecipe(FName ResultItemID);
@@ -144,6 +152,11 @@ protected:
 	// Particle effect for cooking (steam, bubbles, etc.) - Using Cascade for this one for now
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UParticleSystemComponent> CookingSteamParticles; // Use TObjectPtr
+
+	// --- Audio Manager ---
+	// NEW: Audio manager for cooking sounds and camera effects
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UCookingAudioManager> AudioManager; // Use TObjectPtr
 
 	// --- Data Tables ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking|Data")
