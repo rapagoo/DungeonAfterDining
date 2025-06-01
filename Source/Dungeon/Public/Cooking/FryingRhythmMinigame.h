@@ -47,6 +47,14 @@ struct DUNGEON_API FRhythmNote
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timing")
     float HitWindow = 0.4f;
 
+    /** 노트 시각화 시작 여부 */
+    UPROPERTY(BlueprintReadOnly, Category = "State")
+    bool bVisualsStarted = false;
+
+    /** 노트가 실제로 시각화되기 시작한 게임 시간 (초) */
+    UPROPERTY(BlueprintReadOnly, Category = "State")
+    float VisualStartTime = 0.0f;
+
     /** 노트 완료 여부 */
     UPROPERTY(BlueprintReadOnly, Category = "State")
     bool bCompleted = false;
@@ -92,6 +100,18 @@ protected:
     /** 지글지글 사운드 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
     TSoftObjectPtr<USoundBase> SizzleSound;
+
+    /** 메트로놈 사운드 (박자 맞춤용) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    USoundBase* MetronomeSound;
+
+    /** 메트로놈 음악 파일 (긴 루프용) - 선택사항 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> MetronomeMusicLoop;
+
+    /** 메트로놈 음악 재생용 오디오 컴포넌트 */
+    UPROPERTY()
+    class UAudioComponent* MetronomeAudioComponent;
 
     /** 완벽한 타이밍 사운드 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
@@ -148,6 +168,30 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
     float TemperatureChangeRate = 0.1f;
 
+    /** 메트로놈 타이머 핸들 */
+    UPROPERTY()
+    FTimerHandle MetronomeTimerHandle;
+
+    /** 현재 노트의 메트로놈 틱 횟수 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "2", ClampMax = "8"))
+    int32 TicksPerNote = 4; // 각 노트당 4번의 틱 (1, 2, 3, Perfect!)
+
+    /** 현재 노트의 현재 틱 번호 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    int32 CurrentTick = 0;
+
+    /** 현재 노트가 메트로놈을 재생 중인지 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    bool bNoteMetronomeActive = false;
+
+    /** 메트로놈 일반 틱 볼륨 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+    float MetronomeTickVolume = 0.7f; // 기본 70%
+
+    /** 메트로놈 마지막 틱 볼륨 (Perfect 타이밍 강조) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+    float MetronomeLastTickVolume = 1.0f; // 기본 100%
+
 public:
     // UCookingMinigameBase 인터페이스 구현
     virtual void StartMinigame(UCookingWidget* InWidget, AInteractablePot* InPot) override;
@@ -191,6 +235,18 @@ public:
      */
     UFUNCTION(BlueprintPure, Category = "Rhythm")
     float GetCurrentNoteTiming() const { return CurrentNoteTiming; }
+
+    /**
+     * 메트로놈 사운드를 설정합니다 (InteractablePot에서 호출)
+     */
+    UFUNCTION(BlueprintCallable, Category = "Audio")
+    void SetMetronomeSound(USoundBase* NewMetronomeSound);
+
+    /**
+     * 메트로놈 볼륨을 설정합니다 (InteractablePot에서 호출)
+     */
+    UFUNCTION(BlueprintCallable, Category = "Audio")
+    void SetMetronomeVolume(float TickVolume, float LastTickVolume);
 
 protected:
     /**
@@ -246,4 +302,27 @@ protected:
      */
     UFUNCTION(BlueprintPure, Category = "Rhythm")
     FString GetActionTypeFromNoteType(ERhythmNoteType NoteType) const;
+
+    /**
+     * 현재 노트에 대한 메트로놈 시작
+     */
+    UFUNCTION(BlueprintCallable, Category = "Rhythm")
+    void StartNoteMetronome(float NoteDuration);
+
+    /**
+     * 현재 노트의 메트로놈 정지
+     */
+    UFUNCTION(BlueprintCallable, Category = "Rhythm")
+    void StopNoteMetronome();
+
+    /**
+     * 노트 메트로놈 틱 (실제 사운드 재생)
+     */
+    UFUNCTION()
+    void PlayNoteMetronomeTick();
+
+    /**
+     * 다음 노트로 이동합니다.
+     */
+    void MoveToNextNote();
 }; 

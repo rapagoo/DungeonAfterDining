@@ -1050,11 +1050,27 @@ void AInteractablePot::StartCookingMinigame()
 	// 미니게임 시작
 	CurrentMinigame->StartMinigame(CookingWidgetRef.Get(), this);
 	
+	// FryingRhythmMinigame인 경우 메트로놈 사운드 설정
+	if (UFryingRhythmMinigame* FryingMinigame = Cast<UFryingRhythmMinigame>(CurrentMinigame))
+	{
+		if (MetronomeSound.LoadSynchronous())
+		{
+			FryingMinigame->SetMetronomeSound(MetronomeSound.Get());
+			UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Set metronome sound for frying minigame"));
+		}
+		
+		// 메트로놈 볼륨도 설정
+		FryingMinigame->SetMetronomeVolume(MetronomeTickVolume, MetronomeLastTickVolume);
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Set metronome volumes: %.1f, %.1f"), 
+			   MetronomeTickVolume, MetronomeLastTickVolume);
+	}
+	
 	// NEW: 오디오 매니저에게 요리 시작 알림
 	if (AudioManager)
 	{
 		FString MinigameTypeName = (*MinigameClass)->GetName();
-		AudioManager->StartCookingAudio(MinigameTypeName);
+		// 새로운 GameMode 연동 메서드 사용
+		AudioManager->SaveGameModeBackgroundMusicAndStartMinigame(MinigameTypeName);
 		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Started cooking audio for %s"), *MinigameTypeName);
 	}
 	
@@ -1124,8 +1140,9 @@ void AInteractablePot::EndCookingMinigame(ECookingMinigameResult Result)
 	// NEW: 오디오 매니저에게 요리 종료 알림
 	if (AudioManager)
 	{
-		AudioManager->StopCookingAudio();
-		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Stopped cooking audio"));
+		// 새로운 GameMode 연동 메서드 사용
+		AudioManager->RestoreGameModeBackgroundMusic();
+		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::EndCookingMinigame - Restored GameMode background music"));
 	}
 
 	// 미니게임 인스턴스 정리

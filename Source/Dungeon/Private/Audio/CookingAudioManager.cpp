@@ -10,6 +10,7 @@
 #include "CookingSuccessCameraShake.h"
 #include "CookingFailCameraShake.h"
 #include "CookingPerfectCameraShake.h"
+#include "GameMode/DungeonBabGameMode.h"
 
 UCookingAudioManager::UCookingAudioManager()
 {
@@ -22,6 +23,7 @@ UCookingAudioManager::UCookingAudioManager()
     // 컴포넌트 초기화
     BackgroundMusicComponent = nullptr;
     PreviousBackgroundMusic = nullptr;
+    SavedGameModeBackgroundMusic = nullptr;
     CurrentAudioSettings = nullptr;
 
     // NEW: 기존 카메라 쉐이크 클래스들 사용
@@ -355,4 +357,59 @@ void UCookingAudioManager::RestoreBackgroundMusic()
     {
         UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::RestoreBackgroundMusic - No previous background music to restore"));
     }
+}
+
+void UCookingAudioManager::SaveGameModeBackgroundMusicAndStartMinigame(const FString& MinigameType)
+{
+    UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::SaveGameModeBackgroundMusicAndStartMinigame - Starting for %s"), *MinigameType);
+    
+    // GameMode의 배경음악 저장
+    if (ADungeonBabGameMode* GameMode = GetGameMode())
+    {
+        SavedGameModeBackgroundMusic = GameMode->GetBackgroundMusicComponent();
+        
+        if (SavedGameModeBackgroundMusic && SavedGameModeBackgroundMusic->IsPlaying())
+        {
+            // GameMode 배경음악을 페이드아웃으로 정지
+            GameMode->StopBackgroundMusic(true);
+            UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::SaveGameModeBackgroundMusicAndStartMinigame - GameMode background music stopped"));
+        }
+    }
+    
+    // 미니게임 오디오 시작
+    StartCookingAudio(MinigameType);
+}
+
+void UCookingAudioManager::RestoreGameModeBackgroundMusic()
+{
+    UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::RestoreGameModeBackgroundMusic - Restoring GameMode background music"));
+    
+    // 현재 요리 오디오 정지
+    StopCookingAudio();
+    
+    // GameMode 배경음악 복원
+    if (ADungeonBabGameMode* GameMode = GetGameMode())
+    {
+        if (SavedGameModeBackgroundMusic && SavedGameModeBackgroundMusic->IsValidLowLevel())
+        {
+            // GameMode 배경음악을 페이드인으로 재시작
+            GameMode->PlayBackgroundMusic(nullptr, true);
+            UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::RestoreGameModeBackgroundMusic - GameMode background music restored"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Log, TEXT("UCookingAudioManager::RestoreGameModeBackgroundMusic - No saved GameMode background music to restore"));
+        }
+    }
+    
+    SavedGameModeBackgroundMusic = nullptr;
+}
+
+ADungeonBabGameMode* UCookingAudioManager::GetGameMode() const
+{
+    if (UWorld* World = GetWorld())
+    {
+        return Cast<ADungeonBabGameMode>(World->GetAuthGameMode());
+    }
+    return nullptr;
 } 

@@ -251,6 +251,10 @@ private:
 	UPROPERTY()
 	bool bIsFryingGame = false;
 
+	/** NEW: Timer handle for UI hiding delay */
+	UPROPERTY()
+	FTimerHandle HideUITimerHandle;
+
 	/** NEW: Current cooking method reference */
 	UPROPERTY()
 	TWeakObjectPtr<class UCookingMethodBase> CurrentCookingMethod;

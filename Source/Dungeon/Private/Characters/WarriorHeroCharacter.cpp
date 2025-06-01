@@ -542,6 +542,9 @@ void AWarriorHeroCharacter::Input_SliceStart()
         return;
     }
 
+    // Notify the table that slicing has started, so it can tell the widget
+    CurrentInteractableTable->StartSlicingMinigame();
+
     APlayerController* PlayerController = Cast<APlayerController>(GetController());
     if (!PlayerController) 
     {

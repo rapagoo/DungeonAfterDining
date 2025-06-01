@@ -87,6 +87,12 @@ void UCookingWidget::NativeConstruct()
 	{
 		IngredientsList->ClearChildren();
 	}
+
+	// Initialize rhythm game UI to be hidden
+	if (RhythmGameOverlay)
+	{
+		RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
 }
 
 void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
@@ -409,12 +415,23 @@ void UCookingWidget::SetAssociatedTable(AInteractableTable* Table)
 		// Pot will call NotifyWidgetUpdate which calls UpdateWidgetState
         // This ensures the widget reflects the pot's current state when first associated
         Pot->NotifyWidgetUpdate();
+		// 냄비와 상호작용 시 리듬 게임 UI가 보일 수 있도록 (필요하다면 OnMinigameStarted에서 다시 설정됨)
+		if (RhythmGameOverlay)
+		{
+			RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed); // 기본은 숨김, 필요시 MinigameStarted에서 보이게 함
+		}
 	}
 	else
 	{
         // If not a pot, or pot is null, set a default "empty" state
         UpdateWidgetState({}, false, false, false, NAME_None);
 		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::SetAssociatedTable - Associated table is not an InteractablePot or is null. Widget will show default state."));
+		// 테이블과 상호작용 시 리듬 게임 UI를 확실히 숨김
+		if (RhythmGameOverlay)
+		{
+			RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+			UE_LOG(LogTemp, Log, TEXT("UCookingWidget::SetAssociatedTable - Hiding RhythmGameOverlay for InteractableTable."));
+		}
 	}
 	UpdateNearbyIngredient(FindNearbySlicedIngredient()); // This seems to be for a different "add ingredient to inventory" feature
 }
@@ -650,6 +667,16 @@ void UCookingWidget::CheckTimingEventTimeout()
 // NEW: Minigame system functions
 void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 {
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameStarted - Minigame: %s"), Minigame ? *Minigame->GetName() : TEXT("nullptr"));
+	if (AssociatedInteractable)
+	{
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameStarted - AssociatedInteractable: %s, Class: %s"), *AssociatedInteractable->GetName(), *AssociatedInteractable->GetClass()->GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameStarted - AssociatedInteractable is nullptr"));
+	}
+
 	if (!Minigame)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::OnMinigameStarted - Invalid minigame"));
@@ -690,18 +717,11 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 	// 테이블 상호작용(재료 썰기)인 경우 리듬게임 UI 숨기기
 	if (bIsTableInteraction)
 	{
-		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted - Hiding rhythm game UI for table interaction"));
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted - Hiding rhythm game UI for table interaction. RhythmGameOverlay Ptr: %s"), RhythmGameOverlay ? TEXT("Valid") : TEXT("Null"));
 		if (RhythmGameOverlay)
 		{
 			RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
-		}
-		if (ComboText) ComboText->SetVisibility(ESlateVisibility::Collapsed);
-		if (TemperatureText) TemperatureText->SetVisibility(ESlateVisibility::Collapsed);
-		
-		// 상태 텍스트만 업데이트
-		if (StatusText)
-		{
-			StatusText->SetText(FText::FromString(TEXT("재료를 썰고 있습니다...")));
+			UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted - RhythmGameOverlay visibility set to Collapsed for table interaction."));
 		}
 		return; // 나머지 UI 설정 건너뛰기
 	}
@@ -1332,6 +1352,16 @@ void UCookingWidget::SetButtonText(UButton* Button, const FString& Text)
 
 void UCookingWidget::StartRhythmGameNote(const FString& ActionType, float NoteDuration)
 {
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartRhythmGameNote - CALLED. Action: %s, Duration: %.2f. RhythmGameOverlay Ptr: %s, InnerCircle Ptr: %s, InitialCircleScale: %.2f"), 
+		*ActionType, NoteDuration, RhythmGameOverlay ? TEXT("Valid") : TEXT("Null"), RhythmInnerCircle ? TEXT("Valid") : TEXT("Null"), InitialCircleScale);
+
+	// Clear any existing hide UI timer to prevent conflicts
+	if (HideUITimerHandle.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(HideUITimerHandle);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartRhythmGameNote - Cleared existing hide UI timer"));
+	}
+
 	if (!RhythmGameOverlay || !RhythmOuterCircle || !RhythmInnerCircle)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::StartRhythmGameNote - Missing rhythm game UI elements"));
@@ -1398,6 +1428,8 @@ void UCookingWidget::UpdateRhythmGameTiming(float Progress)
 	float CurrentScale = InitialCircleScale * (1.0f - Progress);
 	RhythmInnerCircle->SetRenderScale(FVector2D(CurrentScale, CurrentScale));
 
+	UE_LOG(LogTemp, Verbose, TEXT("UCookingWidget::UpdateRhythmGameTiming - Progress: %.3f, CurrentScale: %.3f, InitialScale: %.2f"), Progress, CurrentScale, InitialCircleScale);
+
 	// 타이밍 텍스트 업데이트
 	if (RhythmTimingText)
 	{
@@ -1421,9 +1453,8 @@ void UCookingWidget::EndRhythmGameNote()
 	bIsRhythmNoteActive = false;
 	CurrentRhythmAction = TEXT("");
 
-	// 리듬게임 UI 숨기기 (약간의 딜레이 후)
-	FTimerHandle HideUITimer;
-	GetWorld()->GetTimerManager().SetTimer(HideUITimer, [this]()
+	// 리듬게임 UI 숨기기 (약간의 딜레이 후) - 멤버 변수 타이머 핸들 사용
+	GetWorld()->GetTimerManager().SetTimer(HideUITimerHandle, [this]()
 	{
 		if (RhythmGameOverlay)
 		{

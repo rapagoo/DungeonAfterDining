@@ -343,6 +343,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Cooking|Settings")
 	bool bMinigameAffectsQuality = true;
 
+	/** NEW: Metronome sound for rhythm games (can be set in Blueprint) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking|Audio")
+	TSoftObjectPtr<USoundBase> MetronomeSound;
+
+	/** NEW: Metronome tick volume (can be set in Blueprint) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking|Audio", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+	float MetronomeTickVolume = 0.7f;
+
+	/** NEW: Metronome last tick volume for perfect timing (can be set in Blueprint) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking|Audio", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+	float MetronomeLastTickVolume = 1.0f;
+
 private:
 	// --- Timing Minigame Variables ---
 	// NEW: Timer for when to trigger timing events during cooking

@@ -210,6 +210,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Audio")
     void RestoreBackgroundMusic();
 
+    /**
+     * GameMode의 배경음악을 저장하고 미니게임 음악 시작
+     * @param MinigameType 미니게임 타입
+     */
+    UFUNCTION(BlueprintCallable, Category = "Cooking Audio")
+    void SaveGameModeBackgroundMusicAndStartMinigame(const FString& MinigameType);
+
+    /**
+     * GameMode 배경음악 복원
+     */
+    UFUNCTION(BlueprintCallable, Category = "Cooking Audio")
+    void RestoreGameModeBackgroundMusic();
+
 protected:
     /**
      * 미니게임 타입에 따른 오디오 설정 가져오기
@@ -219,7 +232,7 @@ protected:
     FCookingAudioSettings* GetAudioSettingsForMinigame(const FString& MinigameType);
 
     /**
-     * 사운드 재생 (위치 기반)
+     * 지정된 위치에서 사운드 재생
      * @param Sound 재생할 사운드
      * @param Location 재생 위치
      * @param VolumeMultiplier 볼륨 배수
@@ -228,6 +241,18 @@ protected:
 
     /**
      * 플레이어 컨트롤러 가져오기
+     * @return 플레이어 컨트롤러
      */
     APlayerController* GetPlayerController() const;
+
+    /**
+     * 현재 GameMode 가져오기
+     * @return GameMode 포인터
+     */
+    class ADungeonBabGameMode* GetGameMode() const;
+
+private:
+    /** GameMode에서 가져온 이전 배경음악 컴포넌트 (복원용) */
+    UPROPERTY()
+    UAudioComponent* SavedGameModeBackgroundMusic;
 }; 

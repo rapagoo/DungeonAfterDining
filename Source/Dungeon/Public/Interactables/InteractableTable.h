@@ -52,4 +52,8 @@ public:
 	// Setter for the active cooking widget
 	UFUNCTION(BlueprintCallable, Category = "Cooking")
 	void SetActiveCookingWidget(UCookingWidget* Widget);
+
+	// Called when player starts slicing on this table
+	UFUNCTION(BlueprintCallable, Category = "Cooking")
+	void StartSlicingMinigame();
 };

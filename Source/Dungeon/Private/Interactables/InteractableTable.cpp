@@ -82,18 +82,28 @@ void AInteractableTable::Tick(float DeltaTime)
 void AInteractableTable::SetActiveCookingWidget(UCookingWidget* Widget)
 {
 	ActiveCookingWidget = Widget;
-
-	// Optional: Immediately update the ingredient state when the widget is set
-	/* // DEPRECATED: Nearby ingredient logic removed from widget
-	if (Widget == nullptr && ActiveCookingWidget.IsValid())
+	if (Widget)
 	{
-		// If the widget is being explicitly cleared, ensure the button is disabled
-		ActiveCookingWidget->UpdateNearbyIngredient(nullptr);
+		UE_LOG(LogTemp, Log, TEXT("AInteractableTable '%s': Associated with Cooking Widget '%s'"), *GetName(), *Widget->GetName());
 	}
-    else if (Widget != nullptr)
-    {   // If a valid widget is set, trigger an immediate check/update
-        // ...
-    }
-	*/
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("AInteractableTable '%s': Disassociated from Cooking Widget."), *GetName());
+	}
+}
+
+void AInteractableTable::StartSlicingMinigame()
+{
+	if (ActiveCookingWidget.IsValid())
+	{
+		// We pass nullptr as the minigame because slicing doesn't have a formal minigame object.
+		// The widget will use this to set up its UI for a "table interaction" (i.e. hide rhythm game elements).
+		ActiveCookingWidget->OnMinigameStarted(nullptr);
+		UE_LOG(LogTemp, Log, TEXT("AInteractableTable '%s': Called OnMinigameStarted on widget for slicing."), *GetName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AInteractableTable '%s': Cannot start slicing minigame UI, ActiveCookingWidget is not valid."), *GetName());
+	}
 }
 
