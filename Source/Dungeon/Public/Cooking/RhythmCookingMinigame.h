@@ -118,8 +118,8 @@ protected:
     int32 CurrentCombo = 0;
 
 public:
-    // UCookingMinigameBase 인터페이스 구현
-    virtual void StartMinigame(UCookingWidget* InWidget, AInteractablePot* InPot) override;
+    // UCookingMinigameBase interface
+    virtual void StartMinigame(TWeakObjectPtr<UUserWidget> InMinigameWidget, AInteractablePot* InPot) override;
     virtual void UpdateMinigame(float DeltaTime) override;
     virtual void EndMinigame() override;
     virtual void HandlePlayerInput(const FString& InputType) override;

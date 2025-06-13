@@ -29,6 +29,7 @@
 #include "Cooking/GrillingMinigame.h" // NEW: Include for grilling minigame
 #include "Cooking/RhythmCookingMinigame.h" // NEW: Include for rhythm minigame
 #include "Cooking/FryingRhythmMinigame.h" // NEW: Include for frying rhythm minigame
+#include "Cooking/FryingTimerMinigame.h" // NEW: Include for the new frying minigame
 #include "CookingCameraShake.h" // Include for cooking camera shake
 #include "GameFramework/PlayerController.h" // Include for player controller access
 #include "Audio/CookingAudioManager.h" // NEW: Include for cooking audio manager
@@ -114,7 +115,7 @@ AInteractablePot::AInteractablePot()
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
 	
 	// 튀기기 미니게임 등록 (CookingMethodFrying의 이름과 맞춰야 함)
-	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
+	MinigameClasses.Add(TEXT("Frying"), UFryingTimerMinigame::StaticClass());
 	
 	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Minigame system initialized with %d registered minigames"), MinigameClasses.Num());
 	// --- End Minigame System ---
@@ -1159,8 +1160,8 @@ void AInteractablePot::RegisterMinigameClasses()
 	// 굽기 미니게임 등록
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
 	
-	// 튀기기 리듬 미니게임 등록
-	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
+	// 튀기기 미니게임 등록
+	MinigameClasses.Add(TEXT("Frying"), UFryingTimerMinigame::StaticClass());
 	
 	// 리듬 미니게임 등록 (기본값으로도 사용)
 	MinigameClasses.Add(TEXT("Rhythm"), URhythmCookingMinigame::StaticClass());

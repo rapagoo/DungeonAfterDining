@@ -105,32 +105,20 @@ protected:
     TWeakObjectPtr<AInteractablePot> OwningPot;
 
 public:
-    /**
-     * 미니게임을 시작합니다
-     * @param InWidget 소유하는 요리 위젯
-     * @param InPot 소유하는 요리 냄비
-     */
-    UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
-    virtual void StartMinigame(UCookingWidget* InWidget, AInteractablePot* InPot);
+    //~ Begin UObject Interface
+    virtual UWorld* GetWorld() const override;
+    //~ End UObject Interface
 
-    /**
-     * 미니게임을 업데이트합니다 (매 틱마다 호출)
-     * @param DeltaTime 프레임 간 시간
-     */
-    UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+    /** Initializes the minigame with a reference to the main cooking widget and the pot. */
+    virtual void StartMinigame(TWeakObjectPtr<UUserWidget> InMinigameWidget, AInteractablePot* InPot);
+
+    /** Called every frame to update the minigame's state. */
     virtual void UpdateMinigame(float DeltaTime);
 
-    /**
-     * 미니게임을 종료합니다
-     */
-    UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+    /** Ends the minigame and calculates the result. */
     virtual void EndMinigame();
 
-    /**
-     * 플레이어 입력을 처리합니다
-     * @param InputType 입력 유형 (버튼 이름 등)
-     */
-    UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+    /** Handles a specific player input action. */
     virtual void HandlePlayerInput(const FString& InputType);
 
     /**
