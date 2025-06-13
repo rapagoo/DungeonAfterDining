@@ -7,13 +7,8 @@
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
-#include "Components/ProgressBar.h"
-#include "Components/Image.h"
-#include "Components/Overlay.h"
-#include "Components/WidgetSwitcher.h"
 #include "Engine/DataTable.h"
 #include "Inventory/SlotStruct.h"
-#include "Cooking/FryingTimerMinigame.h"
 #include "CookingWidget.generated.h"
 
 // Forward declaration for the item actor
@@ -26,7 +21,6 @@ class UTextBlock;
 class UVerticalBox;
 class UImage;
 class UOverlay;
-class UWidgetSwitcher;
 
 /**
  * Widget for the cooking interface.
@@ -50,8 +44,29 @@ public:
 	/** NEW: Called by InteractablePot to update the entire widget's state */
 	void UpdateWidgetState(const TArray<FName>& IngredientIDs, bool bIsPotCooking, bool bIsPotCookingComplete, bool bIsPotBurnt, FName CookedResultID);
 
-	// --- All minigame specific functions below will be moved to their respective widgets ---
-	// --- We keep the core minigame lifecycle functions to manage the widget switcher ---
+	/** NEW: Start a timing event for the minigame */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void StartTimingEvent();
+
+	/** NEW: Check if timing event has expired */
+	void CheckTimingEventTimeout();
+
+	/** NEW: Called when the Stir button is clicked during cooking */
+	UFUNCTION()
+	void OnStirButtonClicked();
+
+	/** NEW: Grilling minigame button handlers */
+	UFUNCTION()
+	void OnFlipButtonClicked();
+
+	UFUNCTION()
+	void OnHeatUpButtonClicked();
+
+	UFUNCTION()
+	void OnHeatDownButtonClicked();
+
+	UFUNCTION()
+	void OnCheckButtonClicked();
 
 	// --- NEW: Minigame System Functions ---
 	/** Called when a cooking minigame starts */
@@ -66,11 +81,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
 	void OnMinigameEnded(int32 Result);
 
+	/** Handle minigame input */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void HandleMinigameInput(const FString& InputType);
+
+	/** NEW: Update required action for current minigame */
+	UFUNCTION(BlueprintCallable, Category = "Cooking Minigame")
+	void UpdateRequiredAction(const FString& ActionType, bool bActionRequired);
+
+	/** NEW: Set button text dynamically */
+	UFUNCTION(BlueprintCallable, Category = "UI Helper")
+	void SetButtonText(UButton* Button, const FString& Text);
+
+	/** NEW: Handle rhythm game input for frying */
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void HandleRhythmGameInput();
+
+	/** NEW: Rhythm game functions */
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void StartRhythmGameNote(const FString& ActionType, float NoteDuration);
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void UpdateRhythmGameTiming(float Progress);
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void EndRhythmGameNote();
+
+	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
+	void ShowRhythmGameResult(const FString& Result);
+
 protected:
 	virtual void NativeConstruct() override;
-	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	/** NEW: Handle keyboard input - This will be simplified or moved */
+	/** NEW: Handle keyboard input */
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	/** Button to interact with nearby ingredient (Add to Pot originally, now Add to Inventory) */
@@ -85,6 +128,23 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UButton* CollectButton;
 
+	/** NEW: Button for timing minigame during cooking */
+	UPROPERTY(meta = (BindWidget))
+	UButton* StirButton;
+
+	/** NEW: Grilling minigame buttons */
+	UPROPERTY(meta = (BindWidget))
+	UButton* FlipButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* HeatUpButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* HeatDownButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* CheckButton;
+
 	/** Vertical box to list the added ingredients */
 	UPROPERTY(meta = (BindWidget))
 	UVerticalBox* IngredientsList;
@@ -97,17 +157,33 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* ActionText;
 
-	/** NEW: Widget Switcher to hold the different minigame UIs */
+	/** NEW: TextBlock to display rhythm game combo information */
 	UPROPERTY(meta = (BindWidget))
-	UWidgetSwitcher* MinigameSwitcher;
+	UTextBlock* ComboText;
+
+	/** NEW: TextBlock to display cooking temperature for frying rhythm game */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* TemperatureText;
+
+	/** NEW: Rhythm game circular timing UI elements */
+	UPROPERTY(meta = (BindWidget))
+	class UImage* RhythmOuterCircle;
+
+	UPROPERTY(meta = (BindWidget))
+	class UImage* RhythmInnerCircle;
+
+	UPROPERTY(meta = (BindWidget))
+	class UOverlay* RhythmGameOverlay;
+
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* RhythmActionText;
+
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* RhythmTimingText;
 
 	/** The class of widget to represent a single ingredient in the list */
 	UPROPERTY(EditDefaultsOnly, Category="Cooking UI")
 	TSubclassOf<UUserWidget> IngredientEntryWidgetClass;
-
-	/** NEW: Map of minigame classes to the widget classes that should be displayed for them */
-	UPROPERTY(EditDefaultsOnly, Category = "Cooking UI")
-	TMap<TSubclassOf<UCookingMinigameBase>, TSubclassOf<UUserWidget>> MinigameWidgetMap;
 
 	/** Reference to the table/pot this widget is associated with */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Logic")
@@ -116,6 +192,16 @@ protected:
 	/** Pointer to the item actor currently detected nearby on the table/pot surface */
 	UPROPERTY()
 	TWeakObjectPtr<AInventoryItemActor> NearbyIngredient;
+
+	/** NEW: Timing minigame state variables */
+	UPROPERTY()
+	bool bIsTimingEventActive = false;
+
+	UPROPERTY()
+	float TimingEventStartTime = 0.0f;
+
+	UPROPERTY()
+	float TimingEventDuration = 2.0f; // How long player has to respond
 
 	/** Called when the Add Ingredient button is clicked (Now adds nearby item to inventory) */
 	UFUNCTION()
@@ -129,6 +215,9 @@ protected:
 	UFUNCTION()
 	void OnCollectButtonClicked();
 
+	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
+	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);
+
 private:
 	/** NEW: Current active minigame reference */
 	UPROPERTY()
@@ -138,6 +227,30 @@ private:
 	UPROPERTY()
 	bool bIsInMinigameMode = false;
 
+	/** NEW: Rhythm game state variables */
+	UPROPERTY()
+	bool bIsRhythmNoteActive = false;
+
+	UPROPERTY()
+	float RhythmNoteStartTime = 0.0f;
+
+	UPROPERTY()
+	float RhythmNoteDuration = 3.0f;
+
+	UPROPERTY()
+	FString CurrentRhythmAction = TEXT("");
+
+	UPROPERTY()
+	float InitialCircleScale = 3.0f;
+
+	/** NEW: Current required action for cooking */
+	UPROPERTY()
+	FString CurrentRequiredAction = TEXT("");
+
+	/** NEW: Whether we're in frying minigame mode */
+	UPROPERTY()
+	bool bIsFryingGame = false;
+
 	/** NEW: Timer handle for UI hiding delay */
 	UPROPERTY()
 	FTimerHandle HideUITimerHandle;
@@ -146,7 +259,4 @@ private:
 	UPROPERTY()
 	TWeakObjectPtr<class UCookingMethodBase> CurrentCookingMethod;
 
-	/** NEW: Reference to the currently active minigame widget instance */
-	UPROPERTY()
-	TWeakObjectPtr<UUserWidget> CurrentMinigameWidget;
 }; 

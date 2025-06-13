@@ -7,8 +7,6 @@
 #include "Sound/SoundBase.h"
 #include "FryingRhythmMinigame.generated.h"
 
-class UFryingRhythmMinigameWidget; // Forward declaration
-
 /**
  * 리듬 노트 타입
  */
@@ -71,28 +69,136 @@ struct DUNGEON_API FRhythmNote
  * 플레이어가 화면에 나타나는 타이밍 큐에 맞춰 적절한 액션을 수행
  */
 UCLASS(Blueprintable, BlueprintType)
-class DUNGEON_API UFryingRhythmMinigame : public URhythmCookingMinigame
+class DUNGEON_API UFryingRhythmMinigame : public UCookingMinigameBase
 {
     GENERATED_BODY()
 
 public:
     UFryingRhythmMinigame();
 
-    //~ Begin UCookingMinigameBase Interface
-    virtual void StartMinigame(TWeakObjectPtr<UUserWidget> InWidget, AInteractablePot* InPot) override;
+protected:
+    /** 리듬 노트 목록 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings")
+    TArray<FRhythmNote> RhythmNotes;
+
+    /** 현재 활성화된 노트 인덱스 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    int32 CurrentNoteIndex = 0;
+
+    /** 다음 노트까지의 시간 표시용 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    float TimeToNextNote = 0.0f;
+
+    /** 현재 노트의 정확도 표시 (0.0 = 완벽, 1.0 = 최악) */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    float CurrentNoteTiming = 0.0f;
+
+    /** 백그라운드 음악 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> BackgroundMusic;
+
+    /** 지글지글 사운드 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> SizzleSound;
+
+    /** 메트로놈 사운드 (박자 맞춤용) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    USoundBase* MetronomeSound;
+
+    /** 메트로놈 음악 파일 (긴 루프용) - 선택사항 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> MetronomeMusicLoop;
+
+    /** 메트로놈 음악 재생용 오디오 컴포넌트 */
+    UPROPERTY()
+    class UAudioComponent* MetronomeAudioComponent;
+
+    /** 완벽한 타이밍 사운드 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> PerfectSound;
+
+    /** 좋은 타이밍 사운드 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> GoodSound;
+
+    /** 일반 성공 사운드 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> HitSound;
+
+    /** 실패 사운드 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+    TSoftObjectPtr<USoundBase> MissSound;
+
+    /** 점수 설정 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring")
+    float PerfectScore = 100.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring")
+    float GoodScore = 75.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring")
+    float HitScore = 50.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring")
+    float MissScore = -25.0f;
+
+    /** 콤보 시스템 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    int32 CurrentCombo = 0;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    int32 MaxCombo = 0;
+
+    /** 콤보 배수 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring")
+    float ComboMultiplier = 1.2f;
+
+    /** 요리 온도 상태 (너무 낮으면 안 익고, 너무 높으면 탄다) */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    float CookingTemperature = 0.5f;
+
+    /** 최적 온도 범위 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
+    float OptimalTempMin = 0.4f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
+    float OptimalTempMax = 0.8f;
+
+    /** 온도 변화 속도 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings")
+    float TemperatureChangeRate = 0.1f;
+
+    /** 메트로놈 타이머 핸들 */
+    UPROPERTY()
+    FTimerHandle MetronomeTimerHandle;
+
+    /** 현재 노트의 메트로놈 틱 횟수 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "2", ClampMax = "8"))
+    int32 TicksPerNote = 4; // 각 노트당 4번의 틱 (1, 2, 3, Perfect!)
+
+    /** 현재 노트의 현재 틱 번호 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    int32 CurrentTick = 0;
+
+    /** 현재 노트가 메트로놈을 재생 중인지 */
+    UPROPERTY(BlueprintReadOnly, Category = "Game State")
+    bool bNoteMetronomeActive = false;
+
+    /** 메트로놈 일반 틱 볼륨 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+    float MetronomeTickVolume = 0.7f; // 기본 70%
+
+    /** 메트로놈 마지막 틱 볼륨 (Perfect 타이밍 강조) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0"))
+    float MetronomeLastTickVolume = 1.0f; // 기본 100%
+
+public:
+    // UCookingMinigameBase 인터페이스 구현
+    virtual void StartMinigame(UCookingWidget* InWidget, AInteractablePot* InPot) override;
     virtual void UpdateMinigame(float DeltaTime) override;
-    virtual void HandlePlayerInput(const FString& InputType) override;
     virtual void EndMinigame() override;
-    //~ End UCookingMinigameBase Interface
-
-    // Getters for the widget to pull data
-    virtual int32 GetCurrentCombo() const;
-
-    UFUNCTION(BlueprintPure, Category = "Frying Minigame")
-    float GetCookingTemperature() const;
-
-    UFUNCTION(BlueprintPure, Category = "Frying Minigame")
-    bool IsTemperatureOptimal() const;
+    virtual void HandlePlayerInput(const FString& InputType) override;
+    virtual ECookingMinigameResult CalculateResult() const override;
 
     /**
      * 현재 활성화된 노트를 반환합니다
@@ -105,6 +211,24 @@ public:
      */
     UFUNCTION(BlueprintPure, Category = "Rhythm")
     float GetTimeToNextNote() const { return TimeToNextNote; }
+
+    /**
+     * 현재 콤보를 반환합니다
+     */
+    UFUNCTION(BlueprintPure, Category = "Rhythm")
+    int32 GetCurrentCombo() const { return CurrentCombo; }
+
+    /**
+     * 현재 요리 온도를 반환합니다
+     */
+    UFUNCTION(BlueprintPure, Category = "Cooking")
+    float GetCookingTemperature() const { return CookingTemperature; }
+
+    /**
+     * 온도가 최적 범위에 있는지 확인합니다
+     */
+    UFUNCTION(BlueprintPure, Category = "Cooking")
+    bool IsTemperatureOptimal() const;
 
     /**
      * 현재 노트의 타이밍 정확도를 반환합니다 (0.0 = 완벽, 1.0 = 최악)
@@ -146,6 +270,7 @@ protected:
     /**
      * 콤보를 리셋합니다
      */
+    UFUNCTION(BlueprintCallable, Category = "Scoring")
     void ResetCombo();
 
     /**
@@ -200,103 +325,4 @@ protected:
      * 다음 노트로 이동합니다.
      */
     void MoveToNextNote();
-
-    // This function does not exist in the parent, so 'override' is incorrect.
-    void SpawnNewNote();
-
-private:
-    /** A direct pointer to our specific UI widget. Set in StartMinigame. */
-    UPROPERTY()
-    TWeakObjectPtr<UFryingRhythmMinigameWidget> FryingRhythmWidget;
-
-    /** 리듬 노트 목록 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (AllowPrivateAccess = "true"))
-    TArray<FRhythmNote> RhythmNotes;
-
-    /** 현재 활성화된 노트 인덱스 */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    int32 CurrentNoteIndex = 0;
-
-    /** 다음 노트까지의 시간 표시용 */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    float TimeToNextNote = 0.0f;
-
-    /** 현재 노트의 정확도 표시 (0.0 = 완벽, 1.0 = 최악) */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    float CurrentNoteTiming = 0.0f;
-
-    /** 지글지글 사운드 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> SizzleSound;
-
-    /** 메트로놈 사운드 (박자 맞춤용) */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    USoundBase* MetronomeSound;
-
-    /** 메트로놈 음악 파일 (긴 루프용) - 선택사항 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> MetronomeMusicLoop;
-
-    /** 메트로놈 음악 재생용 오디오 컴포넌트 */
-    UPROPERTY(meta = (AllowPrivateAccess = "true"))
-    class UAudioComponent* MetronomeAudioComponent;
-
-    /** 완벽한 타이밍 사운드 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> PerfectSound;
-
-    /** 좋은 타이밍 사운드 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> GoodSound;
-
-    /** 일반 성공 사운드 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> HitSound;
-
-    /** 실패 사운드 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio", meta = (AllowPrivateAccess = "true"))
-    TSoftObjectPtr<USoundBase> MissSound;
-
-    /** 점수 설정 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scoring", meta = (AllowPrivateAccess = "true"))
-    float MissScore = -25.0f;
-
-    /** 요리 온도 상태 (너무 낮으면 안 익고, 너무 높으면 탄다) */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    float CookingTemperature = 0.5f;
-
-    /** 최적 온도 범위 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings", meta = (AllowPrivateAccess = "true"))
-    float OptimalTempMin = 0.4f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings", meta = (AllowPrivateAccess = "true"))
-    float OptimalTempMax = 0.8f;
-
-    /** 온도 변화 속도 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Settings", meta = (AllowPrivateAccess = "true"))
-    float TemperatureChangeRate = 0.1f;
-
-    /** 메트로놈 타이머 핸들 */
-    UPROPERTY(meta = (AllowPrivateAccess = "true"))
-    FTimerHandle MetronomeTimerHandle;
-
-    /** 현재 노트의 메트로놈 틱 횟수 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "2", ClampMax = "8", AllowPrivateAccess = "true"))
-    int32 TicksPerNote = 4; // 각 노트당 4번의 틱 (1, 2, 3, Perfect!)
-
-    /** 현재 노트의 현재 틱 번호 */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    int32 CurrentTick = 0;
-
-    /** 현재 노트가 메트로놈을 재생 중인지 */
-    UPROPERTY(BlueprintReadOnly, Category = "Game State", meta = (AllowPrivateAccess = "true"))
-    bool bNoteMetronomeActive = false;
-
-    /** 메트로놈 일반 틱 볼륨 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0", AllowPrivateAccess = "true"))
-    float MetronomeTickVolume = 0.7f; // 기본 70%
-
-    /** 메트로놈 마지막 틱 볼륨 (Perfect 타이밍 강조) */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rhythm Settings", meta = (ClampMin = "0.1", ClampMax = "2.0", AllowPrivateAccess = "true"))
-    float MetronomeLastTickVolume = 1.0f; // 기본 100%
 }; 
