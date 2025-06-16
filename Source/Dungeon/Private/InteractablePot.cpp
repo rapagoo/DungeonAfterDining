@@ -28,7 +28,7 @@
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
 #include "Cooking/GrillingMinigame.h" // NEW: Include for grilling minigame
 #include "Cooking/RhythmCookingMinigame.h" // NEW: Include for rhythm minigame
-#include "Cooking/FryingRhythmMinigame.h" // NEW: Include for frying rhythm minigame
+#include "Cooking/TimerMinigame.h" // NEW: Include for the new timing minigame
 #include "CookingCameraShake.h" // Include for cooking camera shake
 #include "GameFramework/PlayerController.h" // Include for player controller access
 #include "Audio/CookingAudioManager.h" // NEW: Include for cooking audio manager
@@ -114,7 +114,7 @@ AInteractablePot::AInteractablePot()
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
 	
 	// 튀기기 미니게임 등록 (CookingMethodFrying의 이름과 맞춰야 함)
-	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
+	MinigameClasses.Add(TEXT("Frying"), UTimerMinigame::StaticClass());
 	
 	UE_LOG(LogTemp, Log, TEXT("AInteractablePot: Minigame system initialized with %d registered minigames"), MinigameClasses.Num());
 	// --- End Minigame System ---
@@ -1050,21 +1050,6 @@ void AInteractablePot::StartCookingMinigame()
 	// 미니게임 시작
 	CurrentMinigame->StartMinigame(CookingWidgetRef.Get(), this);
 	
-	// FryingRhythmMinigame인 경우 메트로놈 사운드 설정
-	if (UFryingRhythmMinigame* FryingMinigame = Cast<UFryingRhythmMinigame>(CurrentMinigame))
-	{
-		if (MetronomeSound.LoadSynchronous())
-		{
-			FryingMinigame->SetMetronomeSound(MetronomeSound.Get());
-			UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Set metronome sound for frying minigame"));
-		}
-		
-		// 메트로놈 볼륨도 설정
-		FryingMinigame->SetMetronomeVolume(MetronomeTickVolume, MetronomeLastTickVolume);
-		UE_LOG(LogTemp, Log, TEXT("AInteractablePot::StartCookingMinigame - Set metronome volumes: %.1f, %.1f"), 
-			   MetronomeTickVolume, MetronomeLastTickVolume);
-	}
-	
 	// NEW: 오디오 매니저에게 요리 시작 알림
 	if (AudioManager)
 	{
@@ -1159,8 +1144,8 @@ void AInteractablePot::RegisterMinigameClasses()
 	// 굽기 미니게임 등록
 	MinigameClasses.Add(TEXT("Grilling"), UGrillingMinigame::StaticClass());
 	
-	// 튀기기 리듬 미니게임 등록
-	MinigameClasses.Add(TEXT("Frying"), UFryingRhythmMinigame::StaticClass());
+	// 튀기기 미니게임 등록
+	MinigameClasses.Add(TEXT("Frying"), UTimerMinigame::StaticClass());
 	
 	// 리듬 미니게임 등록 (기본값으로도 사용)
 	MinigameClasses.Add(TEXT("Rhythm"), URhythmCookingMinigame::StaticClass());
