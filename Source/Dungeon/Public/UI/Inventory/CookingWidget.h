@@ -110,6 +110,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rhythm Game")
 	void ShowRhythmGameResult(const FString& Result);
 
+	/** NEW: Timer-based minigame UI functions */
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void StartTimerBasedMinigame(float TotalTime);
+
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void UpdateMainTimer(float Progress, float RemainingTime);
+
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void StartCircularEvent(float StartAngle, float EndAngle, float ArrowSpeed);
+
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void UpdateCircularEvent(float ArrowAngle);
+
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void EndCircularEvent(const FString& Result);
+
+	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
+	void HideCircularEvent();
+
 protected:
 	virtual void NativeConstruct() override;
 
@@ -175,6 +194,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	class UOverlay* RhythmGameOverlay;
 
+	/** NEW: Arrow image for timer-based minigame */
+	UPROPERTY(meta = (BindWidget))
+	class UImage* RhythmArrowImage;
+
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* RhythmActionText;
 
@@ -214,6 +237,11 @@ protected:
 	/** NEW: Called when the Collect button is clicked */
 	UFUNCTION()
 	void OnCollectButtonClicked();
+
+	/** NEW: Delay before hiding circular event UI (seconds) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Timer Minigame", meta = (DisplayName = "UI Hide Delay"))
+	float CircularEventHideDelay = 2.5f;
+
 
 	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
 	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);
@@ -255,8 +283,35 @@ private:
 	UPROPERTY()
 	FTimerHandle HideUITimerHandle;
 
+
+
 	/** NEW: Current cooking method reference */
 	UPROPERTY()
 	TWeakObjectPtr<class UCookingMethodBase> CurrentCookingMethod;
 
-}; 
+	/** NEW: Timer-based minigame state variables */
+	UPROPERTY()
+	bool bIsTimerMinigameActive = false;
+
+	UPROPERTY()
+	float TimerMinigameTotalTime = 20.0f;
+
+	UPROPERTY()
+	float TimerMinigameRemainingTime = 20.0f;
+
+	UPROPERTY()
+	bool bIsCircularEventActive = false;
+
+	UPROPERTY()
+	float CircularEventStartAngle = 0.0f;
+
+	UPROPERTY()
+	float CircularEventEndAngle = 60.0f;
+
+	UPROPERTY()
+	float CircularEventArrowAngle = 0.0f;
+
+	UPROPERTY()
+	float CircularEventArrowSpeed = 180.0f;
+
+};

@@ -553,13 +553,25 @@ void UCookingWidget::OnStirButtonClicked()
 
 	if (bIsInMinigameMode && CurrentMinigame.IsValid())
 	{
-		// 미니게임 진행 중: 적절한 액션 타입으로 처리
-		FString ActionToSend = TEXT("Stir");
-		// 모든 미니게임에서 Stir 버튼은 "Stir" 액션을 사용
-		// (이제 FryingRhythmMinigame에서도 올바르게 "Stir"을 기대함)
-		
-		UE_LOG(LogTemp, Log, TEXT("OnStirButtonClicked - Sending action: %s"), *ActionToSend);
-		HandleMinigameInput(ActionToSend);
+		// 타이머 기반 미니게임 확인
+		FString MinigameType = CurrentMinigame->GetClass()->GetName();
+		if (MinigameType.Contains(TEXT("TimerBased")))
+		{
+			// 타이머 기반 미니게임에서는 ActionButton 또는 SpaceBar 액션 사용
+			FString ActionToSend = TEXT("ActionButton");
+			UE_LOG(LogTemp, Log, TEXT("OnStirButtonClicked - Timer-based minigame, sending action: %s"), *ActionToSend);
+			HandleMinigameInput(ActionToSend);
+		}
+		else
+		{
+			// 기존 미니게임들 (리듬 게임 등)
+			FString ActionToSend = TEXT("Stir");
+			// 모든 미니게임에서 Stir 버튼은 "Stir" 액션을 사용
+			// (이제 FryingRhythmMinigame에서도 올바르게 "Stir"을 기대함)
+			
+			UE_LOG(LogTemp, Log, TEXT("OnStirButtonClicked - Rhythm minigame, sending action: %s"), *ActionToSend);
+			HandleMinigameInput(ActionToSend);
+		}
 	}
 	else
 	{
@@ -710,6 +722,7 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 	bool bIsGrillingMinigame = MinigameType.Contains(TEXT("Grilling"));
 	bool bIsRhythmMinigame = MinigameType.Contains(TEXT("Rhythm"));
 	bool bIsFryingMinigame = MinigameType.Contains(TEXT("FryingRhythm"));
+	bool bIsTimerBasedMinigame = MinigameType.Contains(TEXT("TimerBased"));
 
 	// bIsFryingGame 멤버 변수 업데이트
 	bIsFryingGame = bIsFryingMinigame;
@@ -826,6 +839,38 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 		if (StatusText)
 		{
 			StatusText->SetText(FText::FromString(TEXT("리듬게임 시작! 원이 겹칠 때 해당 키를 누르세요!")));
+		}
+	}
+	else if (bIsTimerBasedMinigame)
+	{
+		// 타이머 기반 미니게임: 단순한 UI 구성
+		if (StirButton)
+		{
+			StirButton->SetVisibility(ESlateVisibility::Visible);
+			StirButton->SetIsEnabled(false); // 이벤트 발생 시에만 활성화
+			SetButtonText(StirButton, TEXT("행동 (Space)"));
+		}
+		
+		// 다른 버튼들 숨기기
+		if (FlipButton) FlipButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (HeatUpButton) HeatUpButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (HeatDownButton) HeatDownButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (CheckButton) CheckButton->SetVisibility(ESlateVisibility::Collapsed);
+
+		// 기본 UI 요소들 숨기기
+		if (ComboText) ComboText->SetVisibility(ESlateVisibility::Collapsed);
+		if (TemperatureText) TemperatureText->SetVisibility(ESlateVisibility::Collapsed);
+		
+		// 리듬게임 UI는 타이머 미니게임에서 원형 이벤트용으로 재사용
+		if (RhythmGameOverlay)
+		{
+			RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		
+		// 상태 텍스트에 조작 가이드 표시
+		if (StatusText)
+		{
+			StatusText->SetText(FText::FromString(TEXT("타이머 요리 미니게임! 이벤트가 발생하면 정확한 타이밍에 Space를 누르세요!")));
 		}
 	}
 	else
@@ -952,6 +997,10 @@ void UCookingWidget::OnMinigameEnded(int32 Result)
 {
 	bIsInMinigameMode = false;
 	CurrentMinigame = nullptr;
+	
+	// 타이머 기반 미니게임 상태 정리
+	bIsTimerMinigameActive = false;
+	bIsCircularEventActive = false;
 
 	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameEnded - Result: %d"), Result);
 
@@ -1512,6 +1561,295 @@ void UCookingWidget::ShowRhythmGameResult(const FString& Result)
 		// 결과에 따른 색상 변경 등 추가 효과 가능
 		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::ShowRhythmGameResult - Showing %s"), *ResultText);
 	}
+}
+
+// ========================================
+// NEW: Timer-based Minigame UI Functions
+// ========================================
+
+void UCookingWidget::StartTimerBasedMinigame(float TotalTime)
+{
+	bIsTimerMinigameActive = true;
+	TimerMinigameTotalTime = TotalTime;
+	TimerMinigameRemainingTime = TotalTime;
+	bIsCircularEventActive = false;
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartTimerBasedMinigame - Started with %.1f seconds"), TotalTime);
+
+	// 기존 리듬 게임 UI 숨기기
+	if (RhythmGameOverlay)
+	{
+		RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	// 상태 텍스트 업데이트
+	if (StatusText)
+	{
+		StatusText->SetText(FText::FromString(TEXT("타이머 요리 미니게임 시작!")));
+	}
+
+	// 액션 텍스트 초기화
+	if (ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("이벤트를 기다려주세요...")));
+	}
+
+	// 버튼들을 기본 상태로 설정
+	if (StirButton)
+	{
+		StirButton->SetVisibility(ESlateVisibility::Visible);
+		StirButton->SetIsEnabled(false);
+		SetButtonText(StirButton, TEXT("행동 (Space)"));
+	}
+}
+
+void UCookingWidget::UpdateMainTimer(float Progress, float RemainingTime)
+{
+	if (!bIsTimerMinigameActive)
+	{
+		return;
+	}
+
+	TimerMinigameRemainingTime = RemainingTime;
+
+	// 진행률을 UI에 표시 (프로그레스 바나 텍스트로)
+	if (StatusText && !bIsCircularEventActive)
+	{
+		FString TimeText = FString::Printf(TEXT("남은 시간: %.1f초"), RemainingTime);
+		StatusText->SetText(FText::FromString(TimeText));
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("UCookingWidget::UpdateMainTimer - Progress: %.2f, Remaining: %.1f"), Progress, RemainingTime);
+}
+
+void UCookingWidget::StartCircularEvent(float StartAngle, float EndAngle, float ArrowSpeed)
+{
+	if (!bIsTimerMinigameActive)
+	{
+		return;
+	}
+
+	// 이전 이벤트의 UI 숨김 타이머가 있다면 취소
+	if (HideUITimerHandle.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(HideUITimerHandle);
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartCircularEvent - Cleared previous hide timer"));
+	}
+
+	bIsCircularEventActive = true;
+	CircularEventStartAngle = StartAngle;
+	CircularEventEndAngle = EndAngle;
+	CircularEventArrowAngle = 0.0f; // 12시에서 시작
+	CircularEventArrowSpeed = ArrowSpeed;
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartCircularEvent - Arc: %.1f-%.1f degrees, Speed: %.1f"), 
+		   StartAngle, EndAngle, ArrowSpeed);
+
+	// 원형 이벤트 UI 표시
+	if (RhythmGameOverlay)
+	{
+		RhythmGameOverlay->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	// 외부 원 (검은색 베이스) - 크기를 더 크게 설정
+	if (RhythmOuterCircle)
+	{
+		RhythmOuterCircle->SetVisibility(ESlateVisibility::Visible);
+		RhythmOuterCircle->SetRenderScale(FVector2D(1.2f, 1.2f)); // 크기 증가
+		// 회전 초기화
+		FWidgetTransform ResetTransform;
+		ResetTransform.Scale = FVector2D(1.2f, 1.2f);
+		ResetTransform.Angle = 0.0f;
+		RhythmOuterCircle->SetRenderTransform(ResetTransform);
+	}
+
+	// 내부 원을 성공 구간으로 사용 (회색 호)
+	if (RhythmInnerCircle)
+	{
+		RhythmInnerCircle->SetVisibility(ESlateVisibility::Visible);
+		// 외부 원과 같은 크기로 설정
+		RhythmInnerCircle->SetRenderScale(FVector2D(1.2f, 1.2f));
+		
+		// 성공 구간의 회전 설정 (StartAngle 기준으로 회전)
+		// UI 회전 오프셋을 적용 (기본값: -90도, 블루프린트에서 조정 가능)
+		float UIRotationOffset = -90.0f; // 기본값, 나중에 미니게임에서 가져올 수 있음
+		float RotationDegrees = StartAngle + UIRotationOffset;
+		FWidgetTransform SuccessZoneTransform;
+		SuccessZoneTransform.Scale = FVector2D(1.2f, 1.2f);
+		SuccessZoneTransform.Angle = RotationDegrees;
+		RhythmInnerCircle->SetRenderTransform(SuccessZoneTransform);
+		
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::StartCircularEvent - Success zone rotated to %.1f degrees"), StartAngle);
+	}
+
+	// 화살표 이미지 설정 (빨간 화살표)
+	if (RhythmArrowImage)
+	{
+		RhythmArrowImage->SetVisibility(ESlateVisibility::Visible);
+		RhythmArrowImage->SetRenderScale(FVector2D(1.0f, 1.0f));
+		// 초기 위치 (12시 방향)
+		FWidgetTransform ArrowTransform;
+		ArrowTransform.Scale = FVector2D(1.0f, 1.0f);
+		ArrowTransform.Angle = 0.0f;
+		RhythmArrowImage->SetRenderTransform(ArrowTransform);
+	}
+
+	// 액션 버튼 활성화
+	if (StirButton)
+	{
+		StirButton->SetIsEnabled(true);
+	}
+
+	// 액션 텍스트 업데이트
+	if (ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("화살표가 색칠된 구간에 올 때 Space를 누르세요!")));
+	}
+
+	// 화살표 각도 표시를 위한 텍스트 (디버그용)
+	if (RhythmTimingText)
+	{
+		FString DebugText = FString::Printf(TEXT("성공 구간: %.0f°-%.0f°"), StartAngle, EndAngle);
+		RhythmTimingText->SetText(FText::FromString(DebugText));
+		RhythmTimingText->SetVisibility(ESlateVisibility::Visible);
+	}
+}
+
+void UCookingWidget::UpdateCircularEvent(float ArrowAngle)
+{
+	if (!bIsCircularEventActive)
+	{
+		return;
+	}
+
+	CircularEventArrowAngle = ArrowAngle;
+
+	// 화살표 이미지 회전 업데이트
+	if (RhythmArrowImage)
+	{
+		// 12시 방향 기준으로 보정 (FWidgetTransform은 각도를 도 단위로 사용)
+		float UIRotationOffset = -90.0f; // 기본값, 나중에 미니게임에서 가져올 수 있음
+		float RotationDegrees = ArrowAngle + UIRotationOffset;
+		
+		FWidgetTransform ArrowTransform;
+		ArrowTransform.Scale = FVector2D(1.0f, 1.0f);
+		ArrowTransform.Angle = RotationDegrees;
+		RhythmArrowImage->SetRenderTransform(ArrowTransform);
+	}
+
+	// 디버그 텍스트 업데이트
+	if (RhythmTimingText)
+	{
+		FString DebugText = FString::Printf(TEXT("화살표: %.0f° | 성공구간: %.0f°-%.0f°"), 
+			ArrowAngle, CircularEventStartAngle, CircularEventEndAngle);
+		RhythmTimingText->SetText(FText::FromString(DebugText));
+	}
+
+	// 성공 구간 내에 있는지 시각적 피드백 (선택사항)
+	bool bInSuccessZone = (ArrowAngle >= CircularEventStartAngle && ArrowAngle <= CircularEventEndAngle);
+	if (bInSuccessZone && ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("지금 누르세요! (Space)")));
+	}
+	else if (ActionText)
+	{
+		ActionText->SetText(FText::FromString(TEXT("화살표가 색칠된 구간에 올 때 Space를 누르세요!")));
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("UCookingWidget::UpdateCircularEvent - Arrow at %.1f degrees, InZone: %s"), 
+		ArrowAngle, bInSuccessZone ? TEXT("YES") : TEXT("NO"));
+}
+
+void UCookingWidget::EndCircularEvent(const FString& Result)
+{
+	if (!bIsCircularEventActive)
+	{
+		return;
+	}
+
+	bIsCircularEventActive = false;
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::EndCircularEvent - Result: %s"), *Result);
+
+	// 결과 표시
+	if (RhythmTimingText)
+	{
+		FString ResultText;
+		if (Result == TEXT("Success"))
+		{
+			ResultText = TEXT("성공!");
+		}
+		else if (Result == TEXT("Failed"))
+		{
+			ResultText = TEXT("실패...");
+		}
+		else if (Result == TEXT("Timeout"))
+		{
+			ResultText = TEXT("시간 초과!");
+		}
+		else
+		{
+			ResultText = Result;
+		}
+		
+		RhythmTimingText->SetText(FText::FromString(ResultText));
+	}
+
+	// 액션 버튼 비활성화
+	if (StirButton)
+	{
+		StirButton->SetIsEnabled(false);
+	}
+
+	// 설정 가능한 지연 시간 후 원형 이벤트 UI 숨기기
+	GetWorld()->GetTimerManager().SetTimer(HideUITimerHandle, [this]()
+	{
+		HideCircularEvent();
+	}, CircularEventHideDelay, false);
+	
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::EndCircularEvent - Hide timer set for %.1f seconds"), CircularEventHideDelay);
+}
+
+void UCookingWidget::HideCircularEvent()
+{
+	// 타이머 정리
+	if (HideUITimerHandle.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(HideUITimerHandle);
+	}
+
+	if (RhythmGameOverlay)
+	{
+		RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (RhythmOuterCircle)
+	{
+		RhythmOuterCircle->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (RhythmInnerCircle)
+	{
+		RhythmInnerCircle->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (RhythmArrowImage)
+	{
+		RhythmArrowImage->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (RhythmTimingText)
+	{
+		RhythmTimingText->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	// 액션 텍스트를 기본 상태로 복원
+	if (ActionText && bIsTimerMinigameActive)
+	{
+		ActionText->SetText(FText::FromString(TEXT("다음 이벤트를 기다려주세요...")));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::HideCircularEvent - Circular event UI hidden"));
 }
 
 FReply UCookingWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
