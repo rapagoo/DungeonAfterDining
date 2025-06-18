@@ -75,6 +75,23 @@ void UCookingWidget::NativeConstruct()
 		CheckButton->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
+	// NEW: Cutting system buttons
+	if (DicedCutButton)
+	{
+		DicedCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnDicedCutButtonClicked);
+		DicedCutButton->SetIsEnabled(false);
+	}
+	if (JulienneCutButton)
+	{
+		JulienneCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnJulienneCutButtonClicked);
+		JulienneCutButton->SetIsEnabled(false);
+	}
+	if (MincedCutButton)
+	{
+		MincedCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnMincedCutButtonClicked);
+		MincedCutButton->SetIsEnabled(false);
+	}
+
 	if (StatusText)
 	{
 		StatusText->SetText(FText::FromString(TEXT("")));
@@ -93,32 +110,63 @@ void UCookingWidget::NativeConstruct()
 	{
 		RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	}
+
+	// NEW: Set up periodic ingredient checking timer
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().SetTimer(
+			IngredientCheckTimer,
+			this,
+			&UCookingWidget::CheckForNearbyIngredients,
+			1.0f, // Check every 1 second
+			true  // Loop
+		);
+	}
 }
 
 void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
 {
 	bool bShouldEnableButton = false;
-	if (ItemActor && ItemActor->IsSliced())
+	if (ItemActor && (ItemActor->IsCut() || ItemActor->CurrentCuttingStyle != ECuttingStyle::ECS_None))
 	{
 		NearbyIngredient = ItemActor;
 		bShouldEnableButton = true;
-		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby sliced item: %s"), *ItemActor->GetName());
+		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby cut item: %s"), *ItemActor->GetName());
 	}
 	else
 	{
-		NearbyIngredient = nullptr;
+		NearbyIngredient = ItemActor; // Still set for cutting buttons
 	}
 
 	if (AddIngredientButton)
 	{
 		AddIngredientButton->SetIsEnabled(bShouldEnableButton);
 	}
+
+	// Update cutting buttons based on current item
+	UpdateCuttingButtons(ItemActor);
+}
+
+void UCookingWidget::CheckForNearbyIngredients()
+{
+	// Find any nearby ingredient
+	AInventoryItemActor* NearbyItem = FindNearbySlicedIngredient();
+	
+	// Only update if there's a change in the item
+	if (NearbyItem != CurrentCuttingItem)
+	{
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::CheckForNearbyIngredients: Found new item %s (previous: %s)"), 
+			NearbyItem ? *NearbyItem->GetName() : TEXT("nullptr"),
+			CurrentCuttingItem ? *CurrentCuttingItem->GetName() : TEXT("nullptr"));
+		
+		UpdateNearbyIngredient(NearbyItem);
+	}
 }
 
 void UCookingWidget::OnAddIngredientClicked()
 {
-	UE_LOG(LogTemp, Log, TEXT("Add Ingredient button clicked (Attempting to add SLICED version of nearby item to inventory)"));
-	if (NearbyIngredient.IsValid() && NearbyIngredient->IsSliced())
+	UE_LOG(LogTemp, Log, TEXT("Add Ingredient button clicked (Attempting to add CUT version of nearby item to inventory)"));
+	if (NearbyIngredient.IsValid() && NearbyIngredient->IsCut())
 	{
 		AInventoryItemActor* IngredientActor = NearbyIngredient.Get(); // Renamed for clarity
 
@@ -152,24 +200,42 @@ void UCookingWidget::OnAddIngredientClicked()
 			return;
 		}
 
-        // --- Check for and use the SlicedItemID ---
+        // --- NEW: Button-based cutting system - choose ItemID based on cutting style ---
         FName ItemIDToAdd = NAME_None;
-        // Assuming the field name is SlicedItemID. Adjust if different.
-        if (ItemDefinition->SlicedItemID != NAME_None)
+        ECuttingStyle CuttingStyle = IngredientActor->CurrentCuttingStyle;
+        
+        switch (CuttingStyle)
         {
-            ItemIDToAdd = ItemDefinition->SlicedItemID;
-            UE_LOG(LogTemp, Log, TEXT("Found SlicedItemID '%s' for original item '%s'."), *ItemIDToAdd.ToString(), *OriginalItemIDHandle.RowName.ToString());
+            case ECuttingStyle::ECS_None:
+                // Not cut - use original item
+                ItemIDToAdd = OriginalItemIDHandle.RowName;
+                UE_LOG(LogTemp, Log, TEXT("Adding uncut item '%s' (cutting style: None)"), *ItemIDToAdd.ToString());
+                break;
+            case ECuttingStyle::ECS_Diced:
+                // Diced - use dedicated diced item ID
+                ItemIDToAdd = ItemDefinition->DicedItemID.IsNone() ? OriginalItemIDHandle.RowName : ItemDefinition->DicedItemID;
+                UE_LOG(LogTemp, Log, TEXT("Adding diced item '%s' (cutting style: Diced)"), *ItemIDToAdd.ToString());
+                break;
+            case ECuttingStyle::ECS_Julienne:
+                // Julienne - use dedicated julienne item ID
+                ItemIDToAdd = ItemDefinition->JulienneItemID.IsNone() ? OriginalItemIDHandle.RowName : ItemDefinition->JulienneItemID;
+                UE_LOG(LogTemp, Log, TEXT("Adding julienne item '%s' (cutting style: Julienne)"), *ItemIDToAdd.ToString());
+                break;
+            case ECuttingStyle::ECS_Minced:
+                // Minced - use dedicated minced item ID
+                ItemIDToAdd = ItemDefinition->MincedItemID.IsNone() ? OriginalItemIDHandle.RowName : ItemDefinition->MincedItemID;
+                UE_LOG(LogTemp, Log, TEXT("Adding minced item '%s' (cutting style: Minced)"), *ItemIDToAdd.ToString());
+                break;
+            default:
+                UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: Unknown cutting style for item '%s'"), *OriginalItemIDHandle.RowName.ToString());
+                ItemIDToAdd = OriginalItemIDHandle.RowName; // Fallback to original
+                break;
         }
-        else
-        {
-            // Fallback or Error? Decide behavior if SlicedItemID is not defined.
-            // Option 1: Log error and do nothing
-            UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: Original item '%s' does not have a valid SlicedItemID defined in its data table row. Cannot add sliced version."), *OriginalItemIDHandle.RowName.ToString());
-            // Option 2: Add the original item back (might be confusing)
-            // ItemIDToAdd = OriginalItemIDHandle.RowName;
-            // UE_LOG(LogTemp, Warning, TEXT("OnAddIngredientClicked: SlicedItemID not found for '%s'. Adding original item ID instead."), *OriginalItemIDHandle.RowName.ToString());
 
-            // For now, let's prevent adding anything if SlicedItemID is missing
+        // ItemID is always valid since we have a fallback
+        if (ItemIDToAdd.IsNone())
+        {
+            UE_LOG(LogTemp, Error, TEXT("OnAddIngredientClicked: No valid ItemID found for cutting style of item '%s'"), *OriginalItemIDHandle.RowName.ToString());
             NearbyIngredient = nullptr;
             if(AddIngredientButton) AddIngredientButton->SetIsEnabled(false);
             return;
@@ -463,12 +529,14 @@ AInventoryItemActor* UCookingWidget::FindNearbySlicedIngredient()
 	TArray<AActor*> OverlappingActors;
 	DetectionArea->GetOverlappingActors(OverlappingActors, AInventoryItemActor::StaticClass());
 
+	// Return the first available item (cut or uncut) for the cutting interface
 	for (AActor* Actor : OverlappingActors)
 	{
 		AInventoryItemActor* ItemActor = Cast<AInventoryItemActor>(Actor);
-		if (ItemActor && ItemActor->IsSliced())
+		if (ItemActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("FindNearbySlicedIngredient: Found valid sliced item: %s"), *ItemActor->GetName());
+			UE_LOG(LogTemp, Log, TEXT("FindNearbySlicedIngredient: Found available item: %s (IsCut: %s)"), 
+				*ItemActor->GetName(), ItemActor->IsCut() ? TEXT("true") : TEXT("false"));
 			return ItemActor;
 		}
 	}
@@ -1911,4 +1979,101 @@ void UCookingWidget::HandleRhythmGameInput()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("HandleRhythmGameInput - No active minigame!"));
 	}
-} 
+}
+
+// NEW: Cutting system implementation
+void UCookingWidget::OnDicedCutButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Diced Cut button clicked"));
+	if (NearbyIngredient.IsValid())
+	{
+		if (NearbyIngredient->CutItemWithStyle(ECuttingStyle::ECS_Diced))
+		{
+			UE_LOG(LogTemp, Log, TEXT("Successfully started diced cutting for item: %s"), *NearbyIngredient->GetName());
+			// Update buttons after cutting starts
+			UpdateCuttingButtons(NearbyIngredient.Get());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Failed to start diced cutting for item: %s"), *NearbyIngredient->GetName());
+		}
+	}
+}
+
+void UCookingWidget::OnJulienneCutButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Julienne Cut button clicked"));
+	if (NearbyIngredient.IsValid())
+	{
+		if (NearbyIngredient->CutItemWithStyle(ECuttingStyle::ECS_Julienne))
+		{
+			UE_LOG(LogTemp, Log, TEXT("Successfully started julienne cutting for item: %s"), *NearbyIngredient->GetName());
+			// Update buttons after cutting starts
+			UpdateCuttingButtons(NearbyIngredient.Get());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Failed to start julienne cutting for item: %s"), *NearbyIngredient->GetName());
+		}
+	}
+}
+
+void UCookingWidget::OnMincedCutButtonClicked()
+{
+	UE_LOG(LogTemp, Log, TEXT("Minced Cut button clicked"));
+	if (NearbyIngredient.IsValid())
+	{
+		if (NearbyIngredient->CutItemWithStyle(ECuttingStyle::ECS_Minced))
+		{
+			UE_LOG(LogTemp, Log, TEXT("Successfully started minced cutting for item: %s"), *NearbyIngredient->GetName());
+			// Update buttons after cutting starts
+			UpdateCuttingButtons(NearbyIngredient.Get());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Failed to start minced cutting for item: %s"), *NearbyIngredient->GetName());
+		}
+	}
+}
+
+void UCookingWidget::UpdateCuttingButtons(AInventoryItemActor* ItemActor)
+{
+	// Set current cutting item
+	CurrentCuttingItem = ItemActor;
+
+	if (!ItemActor)
+	{
+		// No item - disable all cutting buttons
+		if (DicedCutButton) DicedCutButton->SetIsEnabled(false);
+		if (JulienneCutButton) JulienneCutButton->SetIsEnabled(false);
+		if (MincedCutButton) MincedCutButton->SetIsEnabled(false);
+		return;
+	}
+
+	// Enable/disable buttons based on what cutting styles are available
+	if (DicedCutButton)
+	{
+		DicedCutButton->SetIsEnabled(CanCutItemWithStyle(ItemActor, ECuttingStyle::ECS_Diced));
+	}
+	if (JulienneCutButton)
+	{
+		JulienneCutButton->SetIsEnabled(CanCutItemWithStyle(ItemActor, ECuttingStyle::ECS_Julienne));
+	}
+	if (MincedCutButton)
+	{
+		MincedCutButton->SetIsEnabled(CanCutItemWithStyle(ItemActor, ECuttingStyle::ECS_Minced));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UpdateCuttingButtons: Updated buttons for item %s"), 
+		   ItemActor ? *ItemActor->GetName() : TEXT("None"));
+}
+
+bool UCookingWidget::CanCutItemWithStyle(AInventoryItemActor* ItemActor, ECuttingStyle CuttingStyle) const
+{
+	if (!ItemActor)
+	{
+		return false;
+	}
+
+	return ItemActor->CanBeCutWithStyle(CuttingStyle);
+}

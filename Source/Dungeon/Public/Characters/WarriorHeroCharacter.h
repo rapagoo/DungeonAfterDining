@@ -172,15 +172,15 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory | Interaction")
 	TSubclassOf<AInventoryItemActor> DefaultItemActorClass;
 
-	// Variables to store slice start/end points
-	FVector SliceStartWorldLocation = FVector::ZeroVector;
-	FVector SliceEndWorldLocation = FVector::ZeroVector;
-	FVector2D SliceStartScreenPosition = FVector2D::ZeroVector;
-	bool bIsDraggingSlice = false;
+	// Variables to store slice start/end points (DEPRECATED in click-based slicing system)
+	// FVector SliceStartWorldLocation = FVector::ZeroVector;
+	// FVector SliceEndWorldLocation = FVector::ZeroVector;
+	// FVector2D SliceStartScreenPosition = FVector2D::ZeroVector;
+	// bool bIsDraggingSlice = false;
 
-    // Pointer to the item actor being dragged over at the start of a slice attempt
-    UPROPERTY() // Keep track of the actor reference
-    AInventoryItemActor* SlicedItemCandidate = nullptr;
+    // Pointer to the item actor being dragged over at the start of a slice attempt (DEPRECATED in click-based slicing system)
+    // UPROPERTY() // Keep track of the actor reference
+    // AInventoryItemActor* SlicedItemCandidate = nullptr;
 
 public:
 	FORCEINLINE UHeroCombatComponent* GetHeroCombatComponent() const { return HeroCombatComponent; }

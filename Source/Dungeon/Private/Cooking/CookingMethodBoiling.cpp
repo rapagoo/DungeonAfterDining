@@ -28,6 +28,24 @@ bool UCookingMethodBoiling::ProcessIngredients_Implementation(const TArray<FName
 		return false;
 	}
 
+	// --- NEW: Check if all ingredients can be used in cooking ---
+	if (ItemDataTable)
+	{
+		for (const FName& IngredientID : Ingredients)
+		{
+			if (!IngredientID.IsNone())
+			{
+				FInventoryItemStruct* ItemData = ItemDataTable->FindRow<FInventoryItemStruct>(IngredientID, TEXT("BoilingCheckCookingUsability"));
+				if (ItemData && !ItemData->bCanBeUsedInCooking)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("UCookingMethodBoiling: Ingredient '%s' is improperly prepared and cannot be used for boiling"), 
+						   *IngredientID.ToString());
+					return false;  // Boiling failed due to improperly prepared ingredient
+				}
+			}
+		}
+	}
+
 	// 재료 정렬 (일관된 레시피 검색을 위해)
 	TArray<FName> SortedIngredients = Ingredients;
 	SortedIngredients.Sort([](const FName& A, const FName& B) 

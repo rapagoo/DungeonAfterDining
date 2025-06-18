@@ -448,7 +448,7 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
         PlayerController->SetShowMouseCursor(false); // Hide cursor
 
         bIsInCookingMode = false;
-        bIsDraggingSlice = false; // Reset dragging state
+        // bIsDraggingSlice = false; // DEPRECATED: No longer used in click-based slicing system
     }
     else
     {
@@ -535,243 +535,26 @@ void AWarriorHeroCharacter::Input_ToggleCookingModePressed()
 
 void AWarriorHeroCharacter::Input_SliceStart()
 {
-    UE_LOG(LogTemp, Log, TEXT("Input_SliceStart triggered."));
-    if (!bIsInCookingMode || !CurrentInteractableTable) 
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Input_SliceStart aborted: Not in cooking mode (%d) or no table (%d)."), bIsInCookingMode, CurrentInteractableTable != nullptr);
-        return;
-    }
-
-    // Notify the table that slicing has started, so it can tell the widget
-    CurrentInteractableTable->StartSlicingMinigame();
-
-    APlayerController* PlayerController = Cast<APlayerController>(GetController());
-    if (!PlayerController) 
-    {
-         UE_LOG(LogTemp, Warning, TEXT("Input_SliceStart aborted: No PlayerController."));
-         return;
-    }
-
-    // Get current mouse position
-    if (PlayerController->GetMousePosition(SliceStartScreenPosition.X, SliceStartScreenPosition.Y))
-    {
-        // UE_LOG(LogTemp, Log, TEXT("Slice Start - Screen Pos: %s"), *SliceStartScreenPosition.ToString()); // 제거
-
-        // Use GetHitResultUnderCursor to find the object directly under the mouse
-        FHitResult HitResult;
-        bool bHit = PlayerController->GetHitResultUnderCursorByChannel(
-            UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_GameTraceChannel1), // Use InteractionQuery Channel
-            true, // bTraceComplex
-            HitResult
-        );
-
-        // Draw debug point for where the cursor trace hit (or where it would have been)
-        // We might need WorldOrigin/Direction if trace fails, but let's get it anyway for debug
-        // FVector WorldOrigin, WorldDirection; // 제거
-        // UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceStartScreenPosition, WorldOrigin, WorldDirection); // 제거
-        // DrawDebugSphere(GetWorld(), WorldOrigin + WorldDirection * HitResult.Distance, 5.0f, 12, FColor::Yellow, false, 30.0f); // 제거
-
-        // Reset candidate initially
-        SlicedItemCandidate = nullptr;
-        bIsDraggingSlice = false; 
-
-        if (bHit && HitResult.GetActor())
-        {   
-            // Check if the hit actor is an inventory item
-            AInventoryItemActor* HitItemActor = Cast<AInventoryItemActor>(HitResult.GetActor());
-            if (HitItemActor)
-            {
-                SliceStartWorldLocation = HitResult.Location; // Use the actual hit location
-                SlicedItemCandidate = HitItemActor; // Store the candidate item
-                // UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit INVENTORY ITEM: %s at %s. Storing as candidate. Setting bIsDraggingSlice = true."), // 제거
-                //     *SlicedItemCandidate->GetName(), // 제거
-                //     *SliceStartWorldLocation.ToString() // 제거
-                // ); // 제거
-                 bIsDraggingSlice = true;
-                 // DrawDebugSphere(GetWorld(), SliceStartWorldLocation, 5.0f, 12, FColor::Cyan, false, 30.0f); // 제거
-            }
-            else
-            {
-                // UE_LOG(LogTemp, Log, TEXT("Slice Start - Cursor trace hit actor '%s', but it's not an InventoryItemActor."), *HitResult.GetActor()->GetName()); // 제거
-                SliceStartWorldLocation = FVector::ZeroVector; // Still reset location if not an item
-            }
-        }
-        else
-        {
-             // UE_LOG(LogTemp, Warning, TEXT("Slice Start - Cursor trace did not hit anything.")); // 제거
-             SliceStartWorldLocation = FVector::ZeroVector; // Ensure reset
-        }
-        
-        // Ensure drag state is false if we didn't hit a valid item
-        if (!SlicedItemCandidate)
-        {
-            bIsDraggingSlice = false;
-        }
-    }
-    else
-    {
-        // UE_LOG(LogTemp, Warning, TEXT("Slice Start - Failed to get mouse position. bIsDraggingSlice remains false.")); // 제거
-         bIsDraggingSlice = false; // Explicitly ensure it's false
-    }
+    // REMOVED: Old slicing system - now handled by UI buttons
+    UE_LOG(LogTemp, Log, TEXT("Input_SliceStart: Old slicing system disabled. Use UI cutting buttons instead."));
 }
 
 void AWarriorHeroCharacter::Input_SliceEnd()
 {
-    // UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd triggered. Current bIsDraggingSlice = %d"), bIsDraggingSlice); // 제거
-    if (!bIsInCookingMode || !bIsDraggingSlice || !CurrentInteractableTable) 
-    {
-         // UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted early: CookingMode=%d, IsDragging=%d, Table=%d"), bIsInCookingMode, bIsDraggingSlice, CurrentInteractableTable != nullptr); // 제거
-         // Reset slice state even if aborted early
-         bIsDraggingSlice = false;
-         SliceStartWorldLocation = FVector::ZeroVector;
-         SliceEndWorldLocation = FVector::ZeroVector;
-         return; 
-    }
-
-    APlayerController* PlayerController = Cast<APlayerController>(GetController());
-    if (!PlayerController) 
-    {
-        // UE_LOG(LogTemp, Warning, TEXT("Input_SliceEnd aborted: No PlayerController.")); // 제거
-        bIsDraggingSlice = false; // Ensure reset
-        SliceStartWorldLocation = FVector::ZeroVector; 
-        return;
-    }
-
-    FVector2D SliceEndScreenPosition;
-    if (PlayerController->GetMousePosition(SliceEndScreenPosition.X, SliceEndScreenPosition.Y))
-    {
-        // UE_LOG(LogTemp, Log, TEXT("Slice End - Screen Pos: %s"), *SliceEndScreenPosition.ToString()); // 제거
-
-        // --- Check Screen Distance First ---
-        const float ScreenDistance = FVector2D::Distance(SliceStartScreenPosition, SliceEndScreenPosition);
-        const float ScreenDistanceThreshold = 10.0f; // Minimum pixel distance for a slice
-        // UE_LOG(LogTemp, Log, TEXT("Calculated Screen Distance: %.2f (Threshold: %.1f)"), ScreenDistance, ScreenDistanceThreshold); // 제거
-
-        if (ScreenDistance < ScreenDistanceThreshold)
-        {
-            // UE_LOG(LogTemp, Log, TEXT("Slice canceled - screen drag distance too short.")); // 제거
-        }
-        else
-        {   
-            // Screen distance is sufficient, get world end location via GetHitResultUnderCursor
-            FHitResult EndHitResult;
-            bool bEndHit = PlayerController->GetHitResultUnderCursorByChannel(
-                UEngineTypes::ConvertToTraceType(ECollisionChannel::ECC_GameTraceChannel1),
-                true, // bTraceComplex
-                EndHitResult
-            );
-            
-            // Draw debug point for where the end cursor trace hit
-            // FVector EndWorldOrigin, EndWorldDirection; // Need temp vars for debug draw // 제거
-            // UGameplayStatics::DeprojectScreenToWorld(PlayerController, SliceEndScreenPosition, EndWorldOrigin, EndWorldDirection); // 제거
-            // DrawDebugSphere(GetWorld(), EndWorldOrigin + EndWorldDirection * EndHitResult.Distance, 5.0f, 12, FColor::Orange, false, 30.0f); // 제거
-
-            AInventoryItemActor* EndHitItemActor = nullptr;
-            if (bEndHit && EndHitResult.GetActor())
-            {
-                SliceEndWorldLocation = EndHitResult.Location;
-                EndHitItemActor = Cast<AInventoryItemActor>(EndHitResult.GetActor()); // Try casting end hit actor
-                // ... Log End Cursor trace hit ...
-                // ... Draw Debug Sphere (Magenta) ...
-            }
-            else
-            {
-                 // UE_LOG(LogTemp, Warning, TEXT("Slice End - Cursor trace for end point did not hit anything or invalid actor.")); // 제거
-                 SliceEndWorldLocation = FVector::ZeroVector;
-            }
-
-            // --- Perform Slice only if Start and End hit the SAME Inventory Item ---
-            if (SlicedItemCandidate != nullptr && // Was a valid item hit at the start?
-                EndHitItemActor == SlicedItemCandidate && // Did the end hit the SAME item?
-                !SliceStartWorldLocation.IsNearlyZero() && 
-                !SliceEndWorldLocation.IsNearlyZero())
-            {
-                // All conditions met, proceed with slice
-                if (SlicedItemCandidate)
-                {
-                    // UE_LOG(LogTemp, Log, TEXT("Start/End points valid and hit the SAME InventoryItem (%s). Performing Slice."), *SlicedItemCandidate->GetName()); // 제거
-                     // Draw the debug line representing the slice path
-                    // DrawDebugLine(GetWorld(), SliceStartWorldLocation, SliceEndWorldLocation, FColor::Yellow, false, 30.0f, 0, 1.0f); // 제거
-
-                    // Calculate cutting plane (Moved calculation here)
-                    FVector SliceDirection = (SliceEndWorldLocation - SliceStartWorldLocation).GetSafeNormal();
-                    FVector PlanePosition = (SliceStartWorldLocation + SliceEndWorldLocation) / 2.0f;
-                    FVector PlaneNormal = (SliceDirection ^ FVector::UpVector).GetSafeNormal(); 
-                    if (PlaneNormal.IsNearlyZero()) { PlaneNormal = FVector::ForwardVector; }
-
-                    PerformSlice(SlicedItemCandidate, PlanePosition, PlaneNormal); // Use the stored candidate
-                }
-            }
-            else
-            { 
-                // Log the reason for aborting
-                // FString AbortReason = TEXT("Unknown"); // 제거
-                // if (!SlicedItemCandidate) AbortReason = TEXT("No valid item hit at start"); // 제거
-                // else if (EndHitItemActor != SlicedItemCandidate) AbortReason = FString::Printf(TEXT("End hit different actor (%s) or not an item"), EndHitItemActor ? *EndHitItemActor->GetName() : TEXT("None")); // 제거
-                // else if (SliceStartWorldLocation.IsNearlyZero() || SliceEndWorldLocation.IsNearlyZero()) AbortReason = TEXT("Start or End WorldLocation zero"); // 제거
-                // UE_LOG(LogTemp, Warning, TEXT("Slice aborted - Reason: %s"), *AbortReason); // 제거
-            }
-        }
-    }
-    // else // 제거 (else 블록이 비어있게 되므로 제거)
-    // { UE_LOG(LogTemp, Warning, TEXT("Slice End - Failed to get mouse position.")); } // 제거
-
-    // Reset locations and dragging state AFTER the operation attempts
-    // UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd finished. Resetting bIsDraggingSlice = false.")); // 제거
-    bIsDraggingSlice = false; 
-    SliceStartWorldLocation = FVector::ZeroVector; 
-    SliceEndWorldLocation = FVector::ZeroVector;
-
-    // Reset candidate at the very end
-    SlicedItemCandidate = nullptr;
+    // REMOVED: Old slicing system - now handled by UI buttons
+    UE_LOG(LogTemp, Log, TEXT("Input_SliceEnd: Old slicing system disabled. Use UI cutting buttons instead."));
 }
 
-// Placeholder for the actual slicing logic
+// DEPRECATED: Slice logic replaced with button-based cutting system
 void AWarriorHeroCharacter::PerformSlice(AInventoryItemActor* ItemToSlice, const FVector& PlanePosition, const FVector& PlaneNormal)
 {
-    if (!ItemToSlice)
+    UE_LOG(LogTemp, Log, TEXT("PerformSlice: DEPRECATED - Use CookingWidget cutting buttons instead"));
+    
+    // Simply update the cooking widget if available
+    if (bIsInCookingMode && CurrentCookingWidget.IsValid() && ItemToSlice)
     {
-        return;
-    }
-
-    // Call the item's slicing function
-    ItemToSlice->SliceItem(PlanePosition, PlaneNormal);
-
-    // Check if the item was successfully marked as sliced after the attempt
-    if (ItemToSlice->IsSliced())
-    {
-        // Play slicing visual effect (Niagara) if assigned
-        if (SliceNiagaraEffect)
-        {
-            UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SliceNiagaraEffect, PlanePosition, PlaneNormal.Rotation(), SliceNiagaraScale);
-        }
-        // Play slicing sound effect if assigned
-        if (SliceSoundEffect)
-        {
-            UGameplayStatics::PlaySoundAtLocation(GetWorld(), SliceSoundEffect, PlanePosition);
-        }
-
-        UE_LOG(LogTemp, Log, TEXT("Slice successful for %s. Played effects (Niagara: %s, Sound: %s)."),
-            *ItemToSlice->GetName(),
-            SliceNiagaraEffect ? TEXT("Yes") : TEXT("No"),
-            SliceSoundEffect ? TEXT("Yes") : TEXT("No"));
-
-        // ***** 중요: 이 부분 추가 *****
-        // If we are currently in cooking mode and the widget is open,
-        // tell the widget to re-check for nearby sliced items immediately.
-        if (bIsInCookingMode && CurrentCookingWidget.IsValid())
-        {
-            UE_LOG(LogTemp, Log, TEXT("PerformSlice: Item sliced while cooking widget is open. Triggering nearby ingredient update."));
-            // We assume the widget's FindNearbySlicedIngredient can find the item we just sliced
-            // based on its associated table/pot.
-            CurrentCookingWidget->UpdateNearbyIngredient(CurrentCookingWidget->FindNearbySlicedIngredient());
-        }
-        // ***** 중요: 이 부분 추가 *****
-
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Slice attempted for %s, but IsSliced() is still false."), *ItemToSlice->GetName());
+        UE_LOG(LogTemp, Log, TEXT("PerformSlice: Updating cooking widget with item for cutting buttons."));
+        CurrentCookingWidget->UpdateNearbyIngredient(ItemToSlice);
     }
 }
 
@@ -873,8 +656,16 @@ void AWarriorHeroCharacter::PlaceItemOnTable(int32 SlotIndex)
                 FSlotStruct SpawnedItemData = ItemDataToPlace;
                 SpawnedItemData.Quantity = 1;
                 PlacedActor->SetItemData(SpawnedItemData);
-                 // Optionally enable physics for the placed item on the table
-                 // PlacedActor->RequestEnablePhysics();
+                
+                // NEW: Update cooking widget to show cutting buttons for the newly placed item
+                if (bIsInCookingMode && CurrentCookingWidget.IsValid())
+                {
+                    UE_LOG(LogTemp, Log, TEXT("[PlaceItemOnTable] Updating cooking widget with newly placed item: %s"), *PlacedActor->GetName());
+                    CurrentCookingWidget->UpdateNearbyIngredient(PlacedActor);
+                }
+                
+                // Optionally enable physics for the placed item on the table
+                // PlacedActor->RequestEnablePhysics();
             }
             else
             {

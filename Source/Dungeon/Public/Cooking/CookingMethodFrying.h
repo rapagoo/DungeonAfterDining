@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Cooking/CookingMethodBase.h"
 #include "GameplayTagContainer.h"
+#include "Inventory/InvenItemStruct.h"
 #include "CookingMethodFrying.generated.h"
 
 /**

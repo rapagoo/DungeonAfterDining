@@ -9,6 +9,7 @@
 #include "Components/VerticalBox.h"
 #include "Engine/DataTable.h"
 #include "Inventory/SlotStruct.h"
+#include "Inventory/InvenItemEnum.h"
 #include "CookingWidget.generated.h"
 
 // Forward declaration for the item actor
@@ -33,6 +34,10 @@ class DUNGEON_API UCookingWidget : public UUserWidget
 public:
 	/** Updates the widget based on the currently detected nearby item actor */
 	void UpdateNearbyIngredient(AInventoryItemActor* ItemActor);
+
+	/** NEW: Periodically check for nearby ingredients */
+	UFUNCTION()
+	void CheckForNearbyIngredients();
 
 	/** Function to associate this widget with a specific table (or Pot) */
 	UFUNCTION(BlueprintCallable, Category = "Cooking Logic")
@@ -67,6 +72,24 @@ public:
 
 	UFUNCTION()
 	void OnCheckButtonClicked();
+
+	/** NEW: Cutting system button handlers */
+	UFUNCTION()
+	void OnDicedCutButtonClicked();
+
+	UFUNCTION()
+	void OnJulienneCutButtonClicked();
+
+	UFUNCTION()
+	void OnMincedCutButtonClicked();
+
+	/** NEW: Update cutting buttons based on current item */
+	UFUNCTION(BlueprintCallable, Category = "Cutting System")
+	void UpdateCuttingButtons(AInventoryItemActor* ItemActor);
+
+	/** NEW: Check if item can be cut with specific style */
+	UFUNCTION(BlueprintPure, Category = "Cutting System")
+	bool CanCutItemWithStyle(AInventoryItemActor* ItemActor, ECuttingStyle CuttingStyle) const;
 
 	// --- NEW: Minigame System Functions ---
 	/** Called when a cooking minigame starts */
@@ -164,6 +187,23 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UButton* CheckButton;
 
+	/** NEW: Cutting system buttons */
+	UPROPERTY(meta = (BindWidget))
+	UButton* DicedCutButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* JulienneCutButton;
+
+	UPROPERTY(meta = (BindWidget))
+	UButton* MincedCutButton;
+
+	/** NEW: Current item being cut */
+	UPROPERTY(BlueprintReadWrite, Category = "Cutting")
+	AInventoryItemActor* CurrentCuttingItem;
+
+	/** NEW: Timer for checking nearby ingredients */
+	FTimerHandle IngredientCheckTimer;
+
 	/** Vertical box to list the added ingredients */
 	UPROPERTY(meta = (BindWidget))
 	UVerticalBox* IngredientsList;
@@ -243,10 +283,7 @@ protected:
 	float CircularEventHideDelay = 2.5f;
 
 
-	// UFUNCTION(BlueprintImplementableEvent, Category = "Cooking UI") // 주석 처리 또는 삭제
-	// void UpdateIngredientDisplay(const TArray<FName>& IngredientIDs);
 
-private:
 	/** NEW: Current active minigame reference */
 	UPROPERTY()
 	TWeakObjectPtr<UCookingMinigameBase> CurrentMinigame;
@@ -297,7 +334,7 @@ private:
 	float TimerMinigameTotalTime = 20.0f;
 
 	UPROPERTY()
-	float TimerMinigameRemainingTime = 20.0f;
+	float TimerMinigameRemainingTime = 20.0f;	
 
 	UPROPERTY()
 	bool bIsCircularEventActive = false;

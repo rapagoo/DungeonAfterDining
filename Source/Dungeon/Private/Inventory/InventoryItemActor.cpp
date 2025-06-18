@@ -12,6 +12,10 @@
 #include "Inventory/SlotStruct.h"     // For FSlotStruct (Item Property Type)
 #include "Engine/CollisionProfile.h" // Correct include for UCollisionProfile
 #include "PhysicsEngine/BodySetup.h" // Correct path for UBodySetup
+#include "Sound/SoundBase.h" // For cutting sound
+#include "Particles/ParticleSystem.h" // For cutting effects
+#include "NiagaraSystem.h" // For Niagara cutting effects
+#include "NiagaraFunctionLibrary.h" // For spawning Niagara effects
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
@@ -34,11 +38,9 @@ AInventoryItemActor::AInventoryItemActor()
     ProceduralMeshComponent->SetVisibility(false); // Initially hidden
     ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision); // Initially no collision
 
-    // Default CapMaterial might be null, can be set in Blueprint Defaults
-    CapMaterial = nullptr; 
-
-    // Default state is not sliced
-    bIsSliced = false;
+    // NEW: Initialize cutting state
+    bIsCut = false;
+    CurrentCuttingStyle = ECuttingStyle::ECS_None;
 
     if (ItemData) {
         UpdateMeshFromData();
@@ -173,195 +175,7 @@ void AInventoryItemActor::UpdateMeshFromData()
     }
 }
 
-// Slices the item mesh
-void AInventoryItemActor::SliceItem(const FVector& PlanePosition, const FVector& PlaneNormal)
-{
-    // --- Prevent slicing if already sliced ---
-    if (bIsSliced || OtherHalfProceduralMeshComponent != nullptr)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: SliceItem called, but item is already sliced. Ignoring."), *GetNameSafe(this));
-        return;
-    }
-
-    if (!ProceduralMeshComponent)
-    {
-        UE_LOG(LogTemp, Error, TEXT("SliceItem failed: ProceduralMeshComponent is null on %s."), *GetName());
-        return;
-    }
-
-    // --- Hide StaticMeshComponent if it exists and PMC is being used ---
-    if (StaticMeshComponent && ProceduralMeshComponent->GetNumSections() > 0)
-    {
-        StaticMeshComponent->SetVisibility(false);
-        StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Hiding StaticMeshComponent."), *GetNameSafe(this));
-    }
-    // --- Ensure the primary PMC is visible and interactable before slicing ---
-    ProceduralMeshComponent->SetVisibility(true);
-    // ProceduralMeshComponent->SetCollisionProfileName(FName("PhysicsActor")); // Set later before physics
-    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    ProceduralMeshComponent->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Block);
-
-    // Use world space plane position for slicing
-    FVector WorldPlanePosition = PlanePosition; // Assuming trace hit location is already in world space
-    FVector WorldPlaneNormal = PlaneNormal;     // Assuming trace hit normal is already in world space
-
-    // --- Destroy the PREVIOUS OtherHalf component if it exists from a prior slice ---
-    if (OtherHalfProceduralMeshComponent)
-    {
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Destroying previous OtherHalfProceduralMeshComponent before new slice."), *GetNameSafe(this));
-         OtherHalfProceduralMeshComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-         OtherHalfProceduralMeshComponent->UnregisterComponent();
-         OtherHalfProceduralMeshComponent->DestroyComponent();
-         OtherHalfProceduralMeshComponent = nullptr;
-    }
-
-    // --- Temporarily disable physics on the component to be sliced ---
-    bool bWasSimulatingPhysics = ProceduralMeshComponent->IsSimulatingPhysics();
-    if (bWasSimulatingPhysics)
-    {
-        ProceduralMeshComponent->SetSimulatePhysics(false);
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Temporarily disabled physics before slicing."), *GetNameSafe(this));
-    }
-
-    // Ensure the procedural mesh has physics data ready for slicing by enabling collision
-    ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    // Ensure the physics body instance is created if it wasn't already
-    if (ProceduralMeshComponent->GetBodyInstance() != nullptr && !ProceduralMeshComponent->GetBodyInstance()->IsValidBodyInstance())
-    {
-         ProceduralMeshComponent->RecreatePhysicsState();
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Recreated physics state for ProceduralMeshComponent before slicing."), *GetNameSafe(this));
-    } else if (ProceduralMeshComponent->GetBodyInstance() == nullptr) {
-         UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: ProceduralMeshComponent BodyInstance is null before slicing."), *GetNameSafe(this));
-         // Optionally try recreating state here too?
-         // ProceduralMeshComponent->RecreatePhysicsState();
-    }
-
-    // --- Get the material to use for the cap --- 
-    UMaterialInterface* ActualCapMaterial = this->CapMaterial; // Default/fallback
-    if (StaticMeshComponent)
-    {
-        UMaterialInterface* OriginalMaterial = StaticMeshComponent->GetMaterial(0);
-        if (OriginalMaterial)
-        {
-            ActualCapMaterial = OriginalMaterial;
-            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Using original material from slot 0 for cap."), *GetNameSafe(this));
-        }
-        else
-        {
-             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Could not get material from StaticMeshComponent slot 0. Using default CapMaterial."), *GetNameSafe(this));
-        }
-    }
-    else
-    {
-         UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: StaticMeshComponent is null when getting cap material. Using default CapMaterial."), *GetNameSafe(this));
-    }
-
-    // Perform the actual slice using SliceProceduralMesh
-    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Calling SliceProceduralMesh."), *GetNameSafe(this));
-    double StartTime = FPlatformTime::Seconds();
-
-    UProceduralMeshComponent* TempOtherHalf = nullptr;
-
-    UKismetProceduralMeshLibrary::SliceProceduralMesh(
-        ProceduralMeshComponent,
-        WorldPlanePosition,
-        WorldPlaneNormal,
-        true, // Create other half
-        TempOtherHalf,
-        EProcMeshSliceCapOption::CreateNewSectionForCap,
-        ActualCapMaterial // Use the determined material
-    );
-
-    double EndTime = FPlatformTime::Seconds();
-    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: SliceProceduralMesh completed in %.4f seconds."), *GetNameSafe(this), EndTime - StartTime);
-
-
-    // Check if the slice was successful and generated the other half
-    if (TempOtherHalf && TempOtherHalf->GetNumSections() > 0)
-    {
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Slice successful. TempOtherHalf component created with %d sections."), *GetNameSafe(this), TempOtherHalf->GetNumSections());
-
-        // --- Assign and Configure the NEW OtherHalf component ---
-        OtherHalfProceduralMeshComponent = TempOtherHalf;
-        if (!OtherHalfProceduralMeshComponent->GetAttachParent()) {
-             // Try KeepWorldTransform first, as SliceProceduralMesh might create the component in world space relative to the original
-             OtherHalfProceduralMeshComponent->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform); 
-        }
-        OtherHalfProceduralMeshComponent->RegisterComponent(); // Ensure it's registered
-        OtherHalfProceduralMeshComponent->SetVisibility(true);
-
-        // --- Configure Physics for the NEW OtherHalf component ---
-        FName CollisionProfileName = FName("PhysicsActor"); // Use the profile that simulates physics
-        OtherHalfProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName);
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set OtherHalf Collision Profile to '%s'. Current Profile: %s"),
-            *GetNameSafe(this),
-            *CollisionProfileName.ToString(),
-            *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString());
-
-        OtherHalfProceduralMeshComponent->SetSimulatePhysics(true); // Enable physics simulation
-        // Optional: Add impulse if needed
-        FVector ImpulseDirection = WorldPlaneNormal.GetSafeNormal(); // Use slice normal for direction
-        float ImpulseStrength = 100.0f; // Adjust as needed
-        OtherHalfProceduralMeshComponent->AddImpulse(ImpulseDirection * ImpulseStrength, NAME_None, true); // Push away from the cut
-
-        // Log final state of OtherHalf
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: New OtherHalf State: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
-               *GetNameSafe(this),
-               OtherHalfProceduralMeshComponent->IsVisible(),
-               OtherHalfProceduralMeshComponent->IsCollisionEnabled(),
-               *OtherHalfProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               OtherHalfProceduralMeshComponent->IsSimulatingPhysics(),
-               OtherHalfProceduralMeshComponent->GetNumSections());
-
-
-        // --- Re-configure Physics for the ORIGINAL PMC component ---
-        // Ensure the original part also uses the physics profile and simulates physics
-        ProceduralMeshComponent->SetCollisionProfileName(CollisionProfileName); // Match profile
-         UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set Original PMC Collision Profile to '%s' AFTER Slice. Current Profile: %s"),
-               *GetNameSafe(this),
-               *CollisionProfileName.ToString(),
-               *ProceduralMeshComponent->GetCollisionProfileName().ToString());
-
-        // **** THIS IS THE FIX for original part not simulating physics ****
-        ProceduralMeshComponent->SetSimulatePhysics(true); // <<<< RE-ENABLE PHYSICS
-        // ******************************************************************
-
-        // Add opposite impulse to the original part
-        ProceduralMeshComponent->AddImpulse(-ImpulseDirection * ImpulseStrength, NAME_None, true); // Push other way
-
-        // Log final state of Original PMC
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Original PMC State After Slice: Visible=%d, Enabled=%d, Profile=%s, SimPhys=%d, Sections=%d"),
-               *GetNameSafe(this),
-               ProceduralMeshComponent->IsVisible(),
-               ProceduralMeshComponent->IsCollisionEnabled(),
-               *ProceduralMeshComponent->GetCollisionProfileName().ToString(),
-               ProceduralMeshComponent->IsSimulatingPhysics(),
-               ProceduralMeshComponent->GetNumSections()); // Log section count
-
-
-        // Mark as sliced
-        bIsSliced = true;
-    }
-    else // Slice failed or created an empty component
-    {
-        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: SliceProceduralMesh failed or did not generate OtherHalf component."), *GetNameSafe(this));
-        if (TempOtherHalf)
-        {
-            TempOtherHalf->DestroyComponent();
-             UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Destroyed empty/invalid temporary OtherHalf component."), *GetNameSafe(this));
-        }
-         // Re-enable physics on original component if it was disabled before the failed slice attempt
-         if (bWasSimulatingPhysics)
-         {
-             ProceduralMeshComponent->SetSimulatePhysics(true);
-             // Maybe recreate state here too if slice fails?
-             ProceduralMeshComponent->RecreatePhysicsState();
-             ProceduralMeshComponent->WakeAllRigidBodies();
-             UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Re-enabled physics on original PMC after failed slice."), *GetNameSafe(this));
-         }
-    }
-}
+// REMOVED: Old SliceItem function - replaced with new CutItemWithStyle system
 
 void AInventoryItemActor::RequestEnablePhysics()
 {
@@ -386,20 +200,15 @@ void AInventoryItemActor::Tick(float DeltaTime)
 	{
 		bEnablePhysicsRequested = false; // Consume the request
 
-		// Choose which component simulates physics based on sliced state
-		if (bIsSliced)
+		// Choose which component simulates physics based on cut state
+		if (bIsCut)
 		{
-			 // If already sliced, physics should be handled by the proc meshes (likely enabled in SliceItem)
+			 // If already cut, physics should be handled by the proc meshes
              // This block can ensure they are still simulating if needed.
 			 if (ProceduralMeshComponent && !ProceduralMeshComponent->IsSimulatingPhysics())
              {
                  ProceduralMeshComponent->SetSimulatePhysics(true);
-                 UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Ensuring ProceduralMeshComponent simulates physics (already sliced)."), *GetNameSafe(this));
-             }
-             if (OtherHalfProceduralMeshComponent && !OtherHalfProceduralMeshComponent->IsSimulatingPhysics())
-             {
-                 OtherHalfProceduralMeshComponent->SetSimulatePhysics(true);
-                  UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Ensuring OtherHalfProceduralMeshComponent simulates physics (already sliced)."), *GetNameSafe(this));
+                 UE_LOG(LogTemp, Verbose, TEXT("AInventoryItemActor [%s]: Tick - Ensuring ProceduralMeshComponent simulates physics (already cut)."), *GetNameSafe(this));
              }
 		}
 		else
@@ -585,11 +394,226 @@ void AInventoryItemActor::PostEditChangeProperty(FPropertyChangedEvent& Property
          UpdateMeshFromData(); // Update the mesh display
     }
 
-     // If CapMaterial changed, we don't need to do anything immediately,
-     // but it will be used the next time SliceItem is called.
-    if (PropertyName == GET_MEMBER_NAME_CHECKED(AInventoryItemActor, CapMaterial))
-    {
-        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: CapMaterial changed."), *GetNameSafe(this));
-    }
+    // NEW: Check if cutting-related properties changed
+    // (No specific actions needed for now)
 }
 #endif
+
+// NEW: Button-based cutting system implementation
+bool AInventoryItemActor::CutItemWithStyle(ECuttingStyle CuttingStyle)
+{
+    if (!CanBeCutWithStyle(CuttingStyle))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Cannot cut with style %d"), 
+               *GetNameSafe(this), (int32)CuttingStyle);
+        return false;
+    }
+
+    if (!ItemData)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: ItemData is null, cannot cut"), 
+               *GetNameSafe(this));
+        return false;
+    }
+
+    // Check if cutting is already in progress
+    if (bIsCuttingInProgress)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("AInventoryItemActor [%s]: Cutting already in progress"), 
+               *GetNameSafe(this));
+        return false;
+    }
+
+    // Verify the target mesh exists
+    TSoftObjectPtr<UStaticMesh> NewMeshPtr;
+    switch (CuttingStyle)
+    {
+        case ECuttingStyle::ECS_Diced:
+            NewMeshPtr = ItemData->DicedMesh;
+            break;
+        case ECuttingStyle::ECS_Julienne:
+            NewMeshPtr = ItemData->JulienneMesh;
+            break;
+        case ECuttingStyle::ECS_Minced:
+            NewMeshPtr = ItemData->MincedMesh;
+            break;
+        default:
+            UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: Invalid cutting style %d"), 
+                   *GetNameSafe(this), (int32)CuttingStyle);
+            return false;
+    }
+
+    // Preload the mesh to ensure it exists
+    UStaticMesh* NewMesh = NewMeshPtr.LoadSynchronous();
+    if (!NewMesh)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: Failed to load mesh for cutting style %d"), 
+               *GetNameSafe(this), (int32)CuttingStyle);
+        return false;
+    }
+
+    // Start cutting animation
+    bIsCuttingInProgress = true;
+    CuttingSoundCount = 0;
+    PendingCuttingStyle = CuttingStyle;
+
+    // Start the cutting animation timer (play sound every 0.3 seconds for 5 times)
+    GetWorld()->GetTimerManager().SetTimer(
+        CuttingAnimationTimer,
+        this,
+        &AInventoryItemActor::PlayCuttingAnimationStep,
+        0.3f, // Interval between cuts
+        true  // Loop
+    );
+
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Started cutting animation for style %d"), 
+           *GetNameSafe(this), (int32)CuttingStyle);
+
+    return true;
+}
+
+bool AInventoryItemActor::CanBeCutWithStyle(ECuttingStyle CuttingStyle) const
+{
+    if (!ItemData || CuttingStyle == ECuttingStyle::ECS_None || bIsCuttingInProgress)
+    {
+        return false;
+    }
+
+    // Check if the appropriate mesh exists for this cutting style
+    switch (CuttingStyle)
+    {
+        case ECuttingStyle::ECS_Diced:
+            return !ItemData->DicedMesh.IsNull();
+        case ECuttingStyle::ECS_Julienne:
+            return !ItemData->JulienneMesh.IsNull();
+        case ECuttingStyle::ECS_Minced:
+            return !ItemData->MincedMesh.IsNull();
+        default:
+            return false;
+    }
+}
+
+TArray<ECuttingStyle> AInventoryItemActor::GetAvailableCuttingStyles() const
+{
+    TArray<ECuttingStyle> AvailableStyles;
+
+    if (!ItemData || bIsCuttingInProgress)
+    {
+        return AvailableStyles;
+    }
+
+    // Check each cutting style and add if mesh is available
+    if (!ItemData->DicedMesh.IsNull())
+        AvailableStyles.Add(ECuttingStyle::ECS_Diced);
+    
+    if (!ItemData->JulienneMesh.IsNull())
+        AvailableStyles.Add(ECuttingStyle::ECS_Julienne);
+    
+    if (!ItemData->MincedMesh.IsNull())
+        AvailableStyles.Add(ECuttingStyle::ECS_Minced);
+
+    return AvailableStyles;
+}
+
+// NEW: Cutting animation implementation
+void AInventoryItemActor::PlayCuttingAnimationStep()
+{
+    CuttingSoundCount++;
+    
+    // Play cutting sound
+    if (CuttingSound && GetWorld())
+    {
+        UGameplayStatics::PlaySoundAtLocation(GetWorld(), CuttingSound, GetActorLocation());
+        UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Playing cutting sound %d/5"), 
+               *GetNameSafe(this), CuttingSoundCount);
+    }
+    
+    // Spawn cutting effect
+    if (CuttingEffect && GetWorld())
+    {
+        UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), CuttingEffect, GetActorLocation());
+    }
+    else if (CuttingNiagaraEffect && GetWorld())
+    {
+        UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), CuttingNiagaraEffect, GetActorLocation());
+    }
+    
+    // Check if we've played 5 cutting sounds
+    if (CuttingSoundCount >= 5)
+    {
+        // Stop the timer and complete the cutting
+        GetWorld()->GetTimerManager().ClearTimer(CuttingAnimationTimer);
+        CompleteCuttingAnimation();
+    }
+}
+
+void AInventoryItemActor::CompleteCuttingAnimation()
+{
+    if (!ItemData || PendingCuttingStyle == ECuttingStyle::ECS_None)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: CompleteCuttingAnimation called with invalid data"), 
+               *GetNameSafe(this));
+        bIsCuttingInProgress = false;
+        return;
+    }
+
+    // Get the appropriate mesh based on pending cutting style
+    TSoftObjectPtr<UStaticMesh> NewMeshPtr;
+    switch (PendingCuttingStyle)
+    {
+        case ECuttingStyle::ECS_Diced:
+            NewMeshPtr = ItemData->DicedMesh;
+            break;
+        case ECuttingStyle::ECS_Julienne:
+            NewMeshPtr = ItemData->JulienneMesh;
+            break;
+        case ECuttingStyle::ECS_Minced:
+            NewMeshPtr = ItemData->MincedMesh;
+            break;
+        default:
+            UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: Invalid pending cutting style %d"), 
+                   *GetNameSafe(this), (int32)PendingCuttingStyle);
+            bIsCuttingInProgress = false;
+            return;
+    }
+
+    // Load the new mesh
+    UStaticMesh* NewMesh = NewMeshPtr.LoadSynchronous();
+    if (!NewMesh)
+    {
+        UE_LOG(LogTemp, Error, TEXT("AInventoryItemActor [%s]: Failed to load mesh for cutting style %d"), 
+               *GetNameSafe(this), (int32)PendingCuttingStyle);
+        bIsCuttingInProgress = false;
+        return;
+    }
+
+    // Hide the old mesh components
+    if (ProceduralMeshComponent)
+    {
+        ProceduralMeshComponent->SetVisibility(false);
+        ProceduralMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    // Set the new mesh on StaticMeshComponent (use mesh's own materials)
+    StaticMeshComponent->SetStaticMesh(NewMesh);
+    
+    // NEW: Don't copy original materials - let the new mesh use its own materials
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Set new mesh with its own materials"), 
+           *GetNameSafe(this));
+    
+    StaticMeshComponent->SetVisibility(true);
+    StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+    // Update cutting style and state
+    CurrentCuttingStyle = PendingCuttingStyle;
+    bIsCut = true;
+    bIsCuttingInProgress = false;
+    PendingCuttingStyle = ECuttingStyle::ECS_None;
+    CuttingSoundCount = 0;
+
+    UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Successfully completed cutting with style %d"), 
+           *GetNameSafe(this), (int32)CurrentCuttingStyle);
+
+    // Call Blueprint event for cutting completion (if you want to add more effects)
+    OnItemDataUpdated();
+}

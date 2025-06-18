@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
 #include "GameplayTagContainer.h"
+#include "Engine/DataTable.h"
+#include "Inventory/InvenItemStruct.h"
 #include "CookingMethodBase.generated.h"
 
 // Forward declaration
