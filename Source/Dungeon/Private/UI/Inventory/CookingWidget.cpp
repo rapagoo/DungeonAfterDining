@@ -20,6 +20,7 @@
 #include "Kismet/GameplayStatics.h" // Include if getting player character/inventory
 #include "Inventory/InvenItemStruct.h" // Include the item definition struct header (Adjust path if needed)
 #include "Cooking/FryingRhythmMinigame.h" // Include for UFryingRhythmMinigame casting
+#include "Cooking/BoilingClickMinigame.h" // Include for UBoilingClickMinigame casting
 
 void UCookingWidget::NativeConstruct()
 {
@@ -80,16 +81,22 @@ void UCookingWidget::NativeConstruct()
 	{
 		DicedCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnDicedCutButtonClicked);
 		DicedCutButton->SetIsEnabled(false);
+		// Initially visible, will be managed by UpdateWidgetState based on interaction type
+		DicedCutButton->SetVisibility(ESlateVisibility::Visible);
 	}
 	if (JulienneCutButton)
 	{
 		JulienneCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnJulienneCutButtonClicked);
 		JulienneCutButton->SetIsEnabled(false);
+		// Initially visible, will be managed by UpdateWidgetState based on interaction type
+		JulienneCutButton->SetVisibility(ESlateVisibility::Visible);
 	}
 	if (MincedCutButton)
 	{
 		MincedCutButton->OnClicked.AddDynamic(this, &UCookingWidget::OnMincedCutButtonClicked);
 		MincedCutButton->SetIsEnabled(false);
+		// Initially visible, will be managed by UpdateWidgetState based on interaction type
+		MincedCutButton->SetVisibility(ESlateVisibility::Visible);
 	}
 
 	if (StatusText)
@@ -111,6 +118,11 @@ void UCookingWidget::NativeConstruct()
 		RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
+	// 마우스 이벤트를 받을 수 있도록 설정
+	SetVisibility(ESlateVisibility::Visible);
+	
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::NativeConstruct - Widget initialized for mouse events"));
+
 	// NEW: Set up periodic ingredient checking timer
 	if (GetWorld())
 	{
@@ -118,7 +130,7 @@ void UCookingWidget::NativeConstruct()
 			IngredientCheckTimer,
 			this,
 			&UCookingWidget::CheckForNearbyIngredients,
-			1.0f, // Check every 1 second
+			0.5f, // Check every 0.5 seconds (more frequent for better responsiveness)
 			true  // Loop
 		);
 	}
@@ -131,16 +143,32 @@ void UCookingWidget::UpdateNearbyIngredient(AInventoryItemActor* ItemActor)
 	{
 		NearbyIngredient = ItemActor;
 		bShouldEnableButton = true;
-		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby cut item: %s"), *ItemActor->GetName());
+		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby cut item: %s (IsCut: %s, CuttingStyle: %d) - ENABLING AddIngredient button"), 
+			*ItemActor->GetName(), 
+			ItemActor->IsCut() ? TEXT("true") : TEXT("false"),
+			(int32)ItemActor->CurrentCuttingStyle);
 	}
 	else
 	{
 		NearbyIngredient = ItemActor; // Still set for cutting buttons
+		if (ItemActor)
+		{
+			UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: Found nearby uncut item: %s (IsCut: %s, CuttingStyle: %d) - AddIngredient button DISABLED"), 
+				*ItemActor->GetName(),
+				ItemActor->IsCut() ? TEXT("true") : TEXT("false"),
+				(int32)ItemActor->CurrentCuttingStyle);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: No nearby item - AddIngredient button DISABLED"));
+		}
 	}
 
 	if (AddIngredientButton)
 	{
 		AddIngredientButton->SetIsEnabled(bShouldEnableButton);
+		UE_LOG(LogTemp, Log, TEXT("UpdateNearbyIngredient: AddIngredient button enabled state set to: %s"), 
+			bShouldEnableButton ? TEXT("ENABLED") : TEXT("DISABLED"));
 	}
 
 	// Update cutting buttons based on current item
@@ -152,14 +180,32 @@ void UCookingWidget::CheckForNearbyIngredients()
 	// Find any nearby ingredient
 	AInventoryItemActor* NearbyItem = FindNearbySlicedIngredient();
 	
-	// Only update if there's a change in the item
-	if (NearbyItem != CurrentCuttingItem)
+	// Always update if there's an item, as its cutting state might have changed
+	if (NearbyItem)
 	{
-		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::CheckForNearbyIngredients: Found new item %s (previous: %s)"), 
-			NearbyItem ? *NearbyItem->GetName() : TEXT("nullptr"),
+		// Check if the item's cutting state has changed
+		bool bItemIsCut = NearbyItem->IsCut() || NearbyItem->CurrentCuttingStyle != ECuttingStyle::ECS_None;
+		bool bPreviouslyConsideredCut = NearbyIngredient.IsValid() && 
+			(NearbyIngredient->IsCut() || NearbyIngredient->CurrentCuttingStyle != ECuttingStyle::ECS_None);
+		
+		// Update if it's a new item or if the cutting state has changed
+		if (NearbyItem != CurrentCuttingItem || bItemIsCut != bPreviouslyConsideredCut)
+		{
+			UE_LOG(LogTemp, Log, TEXT("UCookingWidget::CheckForNearbyIngredients: Updating item %s (IsCut: %s, CuttingStyle: %d)"), 
+				*NearbyItem->GetName(), 
+				bItemIsCut ? TEXT("true") : TEXT("false"),
+				(int32)NearbyItem->CurrentCuttingStyle);
+			
+			UpdateNearbyIngredient(NearbyItem);
+		}
+	}
+	else if (CurrentCuttingItem != nullptr)
+	{
+		// No item found, but we had one before
+		UE_LOG(LogTemp, Log, TEXT("UCookingWidget::CheckForNearbyIngredients: No item found (previous: %s)"), 
 			CurrentCuttingItem ? *CurrentCuttingItem->GetName() : TEXT("nullptr"));
 		
-		UpdateNearbyIngredient(NearbyItem);
+		UpdateNearbyIngredient(nullptr);
 	}
 }
 
@@ -466,6 +512,43 @@ void UCookingWidget::UpdateWidgetState(const TArray<FName>& IngredientIDs, bool 
             bool bHasNearbyIngredient = NearbyIngredient.IsValid();
             AddIngredientButton->SetIsEnabled(bHasNearbyIngredient);
         }
+    }
+
+    // Handle cutting buttons visibility - hide during cooking, show only for table interactions
+    AInteractablePot* Pot = Cast<AInteractablePot>(AssociatedInteractable);
+    bool bShouldShowCuttingButtons = false;
+    
+    if (!Pot)
+    {
+        // This is a table interaction (not a pot), show cutting buttons when not cooking
+        bShouldShowCuttingButtons = true;
+    }
+    else
+    {
+        // This is a pot interaction, only show cutting buttons when pot is idle (no cooking)
+        bShouldShowCuttingButtons = !bIsPotCooking && !bIsPotCookingComplete && !bIsPotBurnt;
+    }
+
+    // Apply visibility to cutting buttons
+    ESlateVisibility CuttingButtonVisibility = bShouldShowCuttingButtons ? ESlateVisibility::Visible : ESlateVisibility::Collapsed;
+    
+    if (DicedCutButton)
+    {
+        DicedCutButton->SetVisibility(CuttingButtonVisibility);
+        UE_LOG(LogTemp, Log, TEXT("UpdateWidgetState: DicedCutButton visibility set to %s"), 
+               bShouldShowCuttingButtons ? TEXT("Visible") : TEXT("Collapsed"));
+    }
+    if (JulienneCutButton)
+    {
+        JulienneCutButton->SetVisibility(CuttingButtonVisibility);
+        UE_LOG(LogTemp, Log, TEXT("UpdateWidgetState: JulienneCutButton visibility set to %s"), 
+               bShouldShowCuttingButtons ? TEXT("Visible") : TEXT("Collapsed"));
+    }
+    if (MincedCutButton)
+    {
+        MincedCutButton->SetVisibility(CuttingButtonVisibility);
+        UE_LOG(LogTemp, Log, TEXT("UpdateWidgetState: MincedCutButton visibility set to %s"), 
+               bShouldShowCuttingButtons ? TEXT("Visible") : TEXT("Collapsed"));
     }
 }
 
@@ -791,6 +874,7 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 	bool bIsRhythmMinigame = MinigameType.Contains(TEXT("Rhythm"));
 	bool bIsFryingMinigame = MinigameType.Contains(TEXT("FryingRhythm"));
 	bool bIsTimerBasedMinigame = MinigameType.Contains(TEXT("TimerBased"));
+	bool bIsClickMinigame = MinigameType.Contains(TEXT("BoilingClick"));
 
 	// bIsFryingGame 멤버 변수 업데이트
 	bIsFryingGame = bIsFryingMinigame;
@@ -941,6 +1025,34 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 			StatusText->SetText(FText::FromString(TEXT("타이머 요리 미니게임! 이벤트가 발생하면 정확한 타이밍에 Space를 누르세요!")));
 		}
 	}
+	else if (bIsClickMinigame)
+	{
+		// 클릭 미니게임: 모든 미니게임 버튼들을 숨기고 클릭 전용 UI만 표시
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted: Starting click minigame - hiding all buttons"));
+		
+		// 모든 미니게임 버튼들 숨기기
+		if (StirButton) StirButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (FlipButton) FlipButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (HeatUpButton) HeatUpButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (HeatDownButton) HeatDownButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (CheckButton) CheckButton->SetVisibility(ESlateVisibility::Collapsed);
+		
+		// 다른 UI 요소들도 숨기기
+		if (ComboText) ComboText->SetVisibility(ESlateVisibility::Collapsed);
+		if (TemperatureText) TemperatureText->SetVisibility(ESlateVisibility::Collapsed);
+		if (RhythmGameOverlay) RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+		
+		// 기본 버튼들도 숨기기
+		if (CookButton) CookButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (AddIngredientButton) AddIngredientButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (CollectButton) CollectButton->SetVisibility(ESlateVisibility::Collapsed);
+		
+		// 상태 텍스트에 클릭 게임 가이드 표시
+		if (StatusText)
+		{
+			StatusText->SetText(FText::FromString(TEXT("끓이기 클릭 게임! 화면에 나타나는 원을 클릭하세요!")));
+		}
+	}
 	else
 	{
 		// 일반 요리 (썰기, 끓이기 등): 기본 UI만 표시
@@ -975,14 +1087,34 @@ void UCookingWidget::OnMinigameStarted(UCookingMinigameBase* Minigame)
 		if (TemperatureText && bIsFryingGame == false) TemperatureText->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	// 다른 버튼들 비활성화
-	if (CookButton)
+	// 클릭 게임이 아닌 경우에만 다른 버튼들 비활성화
+	if (!bIsClickMinigame)
 	{
-		CookButton->SetIsEnabled(false);
+		if (CookButton)
+		{
+			CookButton->SetIsEnabled(false);
+		}
+		if (AddIngredientButton)
+		{
+			AddIngredientButton->SetIsEnabled(false);
+		}
 	}
-	if (AddIngredientButton)
+
+	// 재료 손질 버튼들 숨기기 (요리 중에는 사용하지 않음)
+	if (DicedCutButton)
 	{
-		AddIngredientButton->SetIsEnabled(false);
+		DicedCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted: Hiding DicedCutButton during cooking"));
+	}
+	if (JulienneCutButton)
+	{
+		JulienneCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted: Hiding JulienneCutButton during cooking"));
+	}
+	if (MincedCutButton)
+	{
+		MincedCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameStarted: Hiding MincedCutButton during cooking"));
 	}
 }
 
@@ -1063,6 +1195,14 @@ void UCookingWidget::OnMinigameUpdated(float Score, int32 Phase)
 
 void UCookingWidget::OnMinigameEnded(int32 Result)
 {
+	// 클릭 게임인지 확인
+	bool bWasClickMinigame = false;
+	if (CurrentMinigame.IsValid())
+	{
+		FString MinigameType = CurrentMinigame->GetClass()->GetName();
+		bWasClickMinigame = MinigameType.Contains(TEXT("BoilingClick"));
+	}
+	
 	bIsInMinigameMode = false;
 	CurrentMinigame = nullptr;
 	
@@ -1070,7 +1210,8 @@ void UCookingWidget::OnMinigameEnded(int32 Result)
 	bIsTimerMinigameActive = false;
 	bIsCircularEventActive = false;
 
-	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameEnded - Result: %d"), Result);
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::OnMinigameEnded - Result: %d, WasClickMinigame: %s"), 
+		Result, bWasClickMinigame ? TEXT("true") : TEXT("false"));
 
 	// 결과에 따른 메시지 표시
 	if (StatusText)
@@ -1167,22 +1308,64 @@ void UCookingWidget::OnMinigameEnded(int32 Result)
 		RhythmTimingText->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	// 수거 버튼 활성화 (요리가 완료되었으므로)
-	if (CollectButton)
+	if (bWasClickMinigame)
 	{
-		CollectButton->SetVisibility(ESlateVisibility::Visible);
-		CollectButton->SetIsEnabled(true);
+		// 클릭 게임이 끝났을 때는 수거 버튼만 표시
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameEnded: Click minigame ended - showing only collect button"));
+		
+		if (CollectButton)
+		{
+			CollectButton->SetVisibility(ESlateVisibility::Visible);
+			CollectButton->SetIsEnabled(true);
+		}
+		
+		// 다른 모든 버튼들은 숨김 상태 유지
+		if (CookButton) CookButton->SetVisibility(ESlateVisibility::Collapsed);
+		if (AddIngredientButton) AddIngredientButton->SetVisibility(ESlateVisibility::Collapsed);
+		
+		// 상태 텍스트 업데이트
+		if (StatusText)
+		{
+			StatusText->SetText(FText::FromString(TEXT("요리 완료! 수거 버튼을 눌러서 완성된 요리를 가져가세요!")));
+		}
 	}
+	else
+	{
+		// 다른 미니게임들: 기존 로직 사용
+		
+		// 수거 버튼 활성화 (요리가 완료되었으므로)
+		if (CollectButton)
+		{
+			CollectButton->SetVisibility(ESlateVisibility::Visible);
+			CollectButton->SetIsEnabled(true);
+		}
 
-	// 다른 버튼들 상태 복원
-	if (CookButton)
-	{
-		CookButton->SetIsEnabled(false); // 이미 요리했으므로 비활성화
-	}
-	if (AddIngredientButton)
-	{
-		AddIngredientButton->SetIsEnabled(false); // 요리 중이므로 비활성화
-	}
+		// 다른 버튼들 상태 복원
+		if (CookButton)
+		{
+			CookButton->SetIsEnabled(false); // 이미 요리했으므로 비활성화
+		}
+		if (AddIngredientButton)
+		{
+			AddIngredientButton->SetIsEnabled(false); // 요리 중이므로 비활성화
+		}
+
+		// 재료 손질 버튼들은 요리 완료 후에도 숨김 상태 유지 (요리 결과 수거 후에 복원됨)
+		// UpdateWidgetState에서 적절히 관리됨
+		UE_LOG(LogTemp, Log, TEXT("OnMinigameEnded: Cutting buttons remain hidden until cooking state changes"));
+		if (DicedCutButton)
+		{
+			DicedCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (JulienneCutButton)
+		{
+			JulienneCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (MincedCutButton)
+		{
+			MincedCutButton->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	} // end of else block
 }
 
 void UCookingWidget::HandleMinigameInput(const FString& InputType)
@@ -1510,11 +1693,19 @@ void UCookingWidget::StartRhythmGameNote(const FString& ActionType, float NoteDu
 		FString ActionMessage;
 		if (ActionType == TEXT("Stir"))
 		{
-			ActionMessage = TEXT("흔들기 (Space)");
+			ActionMessage = TEXT("젓기 (Space)");
 		}
 		else if (ActionType == TEXT("Check"))
 		{
-			ActionMessage = TEXT("온도 확인 (V)");
+			ActionMessage = TEXT("거품 확인 (V)");
+		}
+		else if (ActionType == TEXT("Heat"))
+		{
+			ActionMessage = TEXT("불 조절 (Q)");
+		}
+		else if (ActionType == TEXT("Season"))
+		{
+			ActionMessage = TEXT("양념 추가 (E)");
 		}
 		else
 		{
@@ -1688,6 +1879,169 @@ void UCookingWidget::UpdateMainTimer(float Progress, float RemainingTime)
 	}
 
 	UE_LOG(LogTemp, Verbose, TEXT("UCookingWidget::UpdateMainTimer - Progress: %.2f, Remaining: %.1f"), Progress, RemainingTime);
+}
+
+// ========================================
+// NEW: Click Game UI Functions
+// ========================================
+
+void UCookingWidget::ShowClickTarget(FVector2D ScreenPosition, float TargetSize, float TimeLimit)
+{
+	UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::ShowClickTarget - CALLED! Position: (%.2f, %.2f), Size: %.2f"), 
+		   ScreenPosition.X, ScreenPosition.Y, TargetSize);
+
+	// 클릭 타겟을 화면에 표시
+	if (RhythmGameOverlay)
+	{
+		RhythmGameOverlay->SetVisibility(ESlateVisibility::Visible);
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::ShowClickTarget - RhythmGameOverlay shown"));
+	}
+
+	// 타겟 원을 화면 위치에 표시  
+	if (RhythmOuterCircle)
+	{
+		RhythmOuterCircle->SetVisibility(ESlateVisibility::Visible);
+		
+		// 클릭 판정 범위와 정확히 일치하도록 크기 설정
+		float DisplayScale = TargetSize * 6.0f; // 클릭 판정과 시각적 크기 일치
+		RhythmOuterCircle->SetRenderScale(FVector2D(DisplayScale, DisplayScale));
+		
+		// 위젯 변환을 사용하여 위치 설정
+		FWidgetTransform Transform;
+		Transform.Translation = FVector2D(
+			(ScreenPosition.X - 0.5f) * 1200.0f, // 1000에서 1200으로 증가
+			(ScreenPosition.Y - 0.5f) * 800.0f   // 600에서 800으로 증가
+		);
+		Transform.Scale = FVector2D(DisplayScale, DisplayScale);
+		RhythmOuterCircle->SetRenderTransform(Transform);
+		
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::ShowClickTarget - Target circle positioned at translation (%.1f, %.1f), scale %.2f"), 
+			   Transform.Translation.X, Transform.Translation.Y, DisplayScale);
+	}
+
+	// 화살표 이미지 숨기기 (클릭 게임에서는 필요 없음)
+	if (RhythmArrowImage)
+	{
+		RhythmArrowImage->SetVisibility(ESlateVisibility::Collapsed);
+		// 히트 테스트도 비활성화하여 클릭 간섭 방지
+		RhythmArrowImage->SetIsEnabled(false);
+	}
+
+	// 내부 원도 숨기기 (클릭 게임에서는 필요 없음)
+	if (RhythmInnerCircle)
+	{
+		RhythmInnerCircle->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	// 안내 텍스트 표시 (이모티콘 제거)
+	if (RhythmActionText)
+	{
+		RhythmActionText->SetText(FText::FromString(TEXT("원을 클릭하세요!")));
+		RhythmActionText->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	// 타임 리밋 표시 (이모티콘 제거)
+	if (RhythmTimingText)
+	{
+		FString TimeText = FString::Printf(TEXT("%.1f초 남음"), TimeLimit);
+		RhythmTimingText->SetText(FText::FromString(TimeText));
+		RhythmTimingText->SetVisibility(ESlateVisibility::Visible);
+	}
+}
+
+void UCookingWidget::HideClickTarget()
+{
+	// 클릭 타겟 숨기기
+	if (RhythmOuterCircle)
+	{
+		RhythmOuterCircle->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	if (RhythmInnerCircle)
+	{
+		RhythmInnerCircle->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	// 화살표 이미지 다시 활성화 (다른 미니게임에서 사용할 수 있도록)
+	if (RhythmArrowImage)
+	{
+		RhythmArrowImage->SetIsEnabled(true);
+	}
+
+	// 1초 후 전체 오버레이 숨기기
+	GetWorld()->GetTimerManager().SetTimer(HideUITimerHandle, [this]()
+	{
+		if (RhythmGameOverlay)
+		{
+			RhythmGameOverlay->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (RhythmActionText)
+		{
+			RhythmActionText->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (RhythmTimingText)
+		{
+			RhythmTimingText->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}, 1.0f, false);
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::HideClickTarget - Target hidden"));
+}
+
+void UCookingWidget::ShowClickResult(bool bSuccess, float AddedTime)
+{
+	// 결과 텍스트 표시 (이모티콘 제거)
+	if (RhythmTimingText)
+	{
+		FString ResultText;
+		if (bSuccess)
+		{
+			ResultText = TEXT("성공!");
+		}
+		else if (AddedTime > 0.0f)
+		{
+			ResultText = FString::Printf(TEXT("실패! +%.1f초"), AddedTime);
+		}
+		else
+		{
+			ResultText = TEXT("빗나감!");
+		}
+		
+		RhythmTimingText->SetText(FText::FromString(ResultText));
+		RhythmTimingText->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	// 기존 결과 텍스트 숨김 타이머가 있다면 취소
+	if (ResultTextHideTimer.IsValid())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(ResultTextHideTimer);
+	}
+
+	// 0.8초 후 결과 텍스트만 숨기기 (더 빠른 피드백)
+	GetWorld()->GetTimerManager().SetTimer(ResultTextHideTimer, [this]()
+	{
+		if (RhythmTimingText)
+		{
+			RhythmTimingText->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}, 0.8f, false);
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::ShowClickResult - Success: %s, Added Time: %.1f"), 
+		   bSuccess ? TEXT("true") : TEXT("false"), AddedTime);
+}
+
+void UCookingWidget::UpdateClickGameStats(int32 SuccessCount, int32 FailCount, float TotalAddedTime, float Progress)
+{
+	// 게임 통계 업데이트
+	if (StatusText)
+	{
+		FString StatsText = FString::Printf(TEXT("성공: %d | 실패: %d | 추가시간: +%.1f초 | 진행률: %.0f%%"), 
+			SuccessCount, FailCount, TotalAddedTime, Progress);
+		StatusText->SetText(FText::FromString(StatsText));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UCookingWidget::UpdateClickGameStats - Success: %d, Fail: %d, Added: %.1f, Progress: %.1f"), 
+		   SuccessCount, FailCount, TotalAddedTime, Progress);
 }
 
 void UCookingWidget::StartCircularEvent(float StartAngle, float EndAngle, float ArrowSpeed)
@@ -1926,14 +2280,48 @@ FReply UCookingWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEv
 
 	if (PressedKey == EKeys::SpaceBar)
 	{
-		// Space 키 = 흔들기/젓기
+		// Space 키 = 흔들기/젓기 (기본 액션)
 		OnStirButtonClicked();
+		
+		// 리듬 미니게임이 활성화된 경우 입력 처리
+		if (CurrentMinigame.IsValid())
+		{
+			CurrentMinigame->HandlePlayerInput(TEXT("Stir"));
+		}
+		
 		return FReply::Handled();
 	}
 	else if (PressedKey == EKeys::V)
 	{
-		// V 키 = 온도확인
+		// V 키 = 거품 확인/온도 체크
 		OnCheckButtonClicked();
+		
+		// 리듬 미니게임에서 체크 입력 처리
+		if (CurrentMinigame.IsValid())
+		{
+			CurrentMinigame->HandlePlayerInput(TEXT("Check"));
+		}
+		
+		return FReply::Handled();
+	}
+	else if (PressedKey == EKeys::Q)
+	{
+		// Q 키 = 불 조절 (끓이기 전용)
+		if (CurrentMinigame.IsValid())
+		{
+			CurrentMinigame->HandlePlayerInput(TEXT("Heat"));
+		}
+		
+		return FReply::Handled();
+	}
+	else if (PressedKey == EKeys::E)
+	{
+		// E 키 = 양념 추가 (끓이기 전용)
+		if (CurrentMinigame.IsValid())
+		{
+			CurrentMinigame->HandlePlayerInput(TEXT("Season"));
+		}
+		
 		return FReply::Handled();
 	}
 
@@ -1961,6 +2349,65 @@ FReply UCookingWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEv
 	}
 
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UCookingWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// 좌클릭만 처리
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - Mouse click detected!"));
+		
+		// 화면 좌표를 0.0~1.0 비율로 변환
+		FVector2D LocalPosition = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+		FVector2D WidgetSize = InGeometry.GetLocalSize();
+		
+		// 위젯 크기가 0이 아닌지 확인
+		if (WidgetSize.X > 0 && WidgetSize.Y > 0)
+		{
+			FVector2D NormalizedPosition = FVector2D(
+				LocalPosition.X / WidgetSize.X,
+				LocalPosition.Y / WidgetSize.Y
+			);
+
+			UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - Local: (%.1f, %.1f), Size: (%.1f, %.1f), Normalized: (%.3f, %.3f)"), 
+				   LocalPosition.X, LocalPosition.Y, WidgetSize.X, WidgetSize.Y, 
+				   NormalizedPosition.X, NormalizedPosition.Y);
+
+			// 현재 미니게임이 클릭게임인지 확인
+			if (CurrentMinigame.IsValid())
+			{
+				FString MinigameClassName = CurrentMinigame->GetClass()->GetName();
+				UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - Current minigame class: %s"), *MinigameClassName);
+				
+				UBoilingClickMinigame* ClickGame = Cast<UBoilingClickMinigame>(CurrentMinigame.Get());
+				if (ClickGame)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - Sending click to BoilingClickMinigame"));
+					ClickGame->HandleMouseClick(NormalizedPosition);
+					return FReply::Handled();
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - Current minigame is not BoilingClickMinigame (class: %s)"), *MinigameClassName);
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("UCookingWidget::NativeOnMouseButtonDown - No current minigame (bIsInMinigameMode: %s)"), 
+					   bIsInMinigameMode ? TEXT("true") : TEXT("false"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("UCookingWidget::NativeOnMouseButtonDown - Widget size is zero!"));
+		}
+
+		// 클릭게임이 아니어도 일단 처리했다고 반환 (다른 UI 요소와의 충돌 방지)
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void UCookingWidget::HandleRhythmGameInput()
@@ -1992,6 +2439,8 @@ void UCookingWidget::OnDicedCutButtonClicked()
 			UE_LOG(LogTemp, Log, TEXT("Successfully started diced cutting for item: %s"), *NearbyIngredient->GetName());
 			// Update buttons after cutting starts
 			UpdateCuttingButtons(NearbyIngredient.Get());
+			// Force immediate update of nearby ingredient status
+			CheckForNearbyIngredients();
 		}
 		else
 		{
@@ -2010,6 +2459,8 @@ void UCookingWidget::OnJulienneCutButtonClicked()
 			UE_LOG(LogTemp, Log, TEXT("Successfully started julienne cutting for item: %s"), *NearbyIngredient->GetName());
 			// Update buttons after cutting starts
 			UpdateCuttingButtons(NearbyIngredient.Get());
+			// Force immediate update of nearby ingredient status
+			CheckForNearbyIngredients();
 		}
 		else
 		{
@@ -2028,6 +2479,8 @@ void UCookingWidget::OnMincedCutButtonClicked()
 			UE_LOG(LogTemp, Log, TEXT("Successfully started minced cutting for item: %s"), *NearbyIngredient->GetName());
 			// Update buttons after cutting starts
 			UpdateCuttingButtons(NearbyIngredient.Get());
+			// Force immediate update of nearby ingredient status
+			CheckForNearbyIngredients();
 		}
 		else
 		{

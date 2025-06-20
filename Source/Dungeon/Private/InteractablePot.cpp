@@ -27,6 +27,7 @@
 #include "Components/AudioComponent.h" // Make sure this is included, though already in .h it's good practice for .cpp if directly used for creation
 #include "Cooking/CookingMethodBase.h" // Added for cooking methods
 #include "Cooking/CookingMethodBoiling.h" // NEW: Include for boiling cooking method
+#include "Cooking/BoilingClickMinigame.h" // NEW: Include for boiling click minigame
 #include "Cooking/GrillingMinigame.h" // NEW: Include for grilling minigame
 #include "Cooking/FryingRhythmMinigame.h" // NEW: Include for frying minigame
 #include "Cooking/TimerBasedCookingMinigame.h" // NEW: Include for timer-based minigame
@@ -1159,8 +1160,8 @@ void AInteractablePot::RegisterMinigameClasses()
 	// 튀기기 타이머 기반 미니게임 등록 (새로운 게임)
 	MinigameClasses.Add(TEXT("Frying"), UTimerBasedCookingMinigame::StaticClass());
 	
-	// 끓이기 리듬 미니게임 등록 (기존 원 축소 게임)
-	MinigameClasses.Add(TEXT("Boiling"), UFryingRhythmMinigame::StaticClass());
+	// 끓이기 클릭 미니게임 등록 (반응속도 클릭게임)
+	MinigameClasses.Add(TEXT("Boiling"), UBoilingClickMinigame::StaticClass());
 	
 	// 리듬 미니게임 등록 (기본값으로도 사용)
 	MinigameClasses.Add(TEXT("Rhythm"), URhythmCookingMinigame::StaticClass());

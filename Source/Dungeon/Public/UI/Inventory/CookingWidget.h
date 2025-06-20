@@ -152,11 +152,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Timer Minigame")
 	void HideCircularEvent();
 
+	/** NEW: Click game functions */
+	UFUNCTION(BlueprintCallable, Category = "Click Game")
+	void ShowClickTarget(FVector2D ScreenPosition, float TargetSize, float TimeLimit);
+
+	UFUNCTION(BlueprintCallable, Category = "Click Game")
+	void HideClickTarget();
+
+	UFUNCTION(BlueprintCallable, Category = "Click Game")
+	void ShowClickResult(bool bSuccess, float AddedTime);
+
+	UFUNCTION(BlueprintCallable, Category = "Click Game")
+	void UpdateClickGameStats(int32 SuccessCount, int32 FailCount, float TotalAddedTime, float Progress);
+
 protected:
 	virtual void NativeConstruct() override;
 
 	/** NEW: Handle keyboard input */
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+
+	/** NEW: Handle mouse click for click game */
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 	/** Button to interact with nearby ingredient (Add to Pot originally, now Add to Inventory) */
 	UPROPERTY(meta = (BindWidget))
@@ -319,6 +335,10 @@ protected:
 	/** NEW: Timer handle for UI hiding delay */
 	UPROPERTY()
 	FTimerHandle HideUITimerHandle;
+
+	/** NEW: Timer handle for hiding result text */
+	UPROPERTY()
+	FTimerHandle ResultTextHideTimer;
 
 
 

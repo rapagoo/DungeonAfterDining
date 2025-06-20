@@ -16,6 +16,10 @@
 #include "Particles/ParticleSystem.h" // For cutting effects
 #include "NiagaraSystem.h" // For Niagara cutting effects
 #include "NiagaraFunctionLibrary.h" // For spawning Niagara effects
+#include "EngineUtils.h" // For TActorIterator
+#include "Components/BoxComponent.h" // For UBoxComponent
+#include "Interactables/InteractableTable.h" // For table interaction
+#include "UI/Inventory/CookingWidget.h" // For cooking widget updates
 
 // Sets default values
 AInventoryItemActor::AInventoryItemActor()
@@ -616,4 +620,38 @@ void AInventoryItemActor::CompleteCuttingAnimation()
 
     // Call Blueprint event for cutting completion (if you want to add more effects)
     OnItemDataUpdated();
+
+    // NEW: Notify nearby cooking widgets that the item state has changed
+    // This ensures the AddIngredient button gets updated after cutting
+    UWorld* World = GetWorld();
+    if (World)
+    {
+        // Find all CookingWidget instances and update them
+        for (TActorIterator<class AInteractableTable> ActorItr(World); ActorItr; ++ActorItr)
+        {
+            AInteractableTable* Table = *ActorItr;
+            if (Table && Table->GetActiveCookingWidget())
+            {
+                // Check if this item is within the table's detection area
+                UBoxComponent* DetectionArea = Table->FindComponentByClass<UBoxComponent>();
+                if (DetectionArea)
+                {
+                    TArray<AActor*> OverlappingActors;
+                    DetectionArea->GetOverlappingActors(OverlappingActors, AInventoryItemActor::StaticClass());
+                    
+                    for (AActor* Actor : OverlappingActors)
+                    {
+                        if (Actor == this)
+                        {
+                            // This item is within the table's detection area, update the widget
+                            Table->GetActiveCookingWidget()->UpdateNearbyIngredient(this);
+                            UE_LOG(LogTemp, Log, TEXT("AInventoryItemActor [%s]: Updated CookingWidget after cutting completion"), 
+                                   *GetNameSafe(this));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

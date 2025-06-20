@@ -53,6 +53,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cooking")
 	void SetActiveCookingWidget(UCookingWidget* Widget);
 
+	// Getter for the active cooking widget
+	UFUNCTION(BlueprintPure, Category = "Cooking")
+	UCookingWidget* GetActiveCookingWidget() const { return ActiveCookingWidget.Get(); }
+
 	// Called when player starts slicing on this table
 	UFUNCTION(BlueprintCallable, Category = "Cooking")
 	void StartSlicingMinigame();
